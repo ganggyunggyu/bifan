@@ -1,0 +1,827 @@
+:root {
+  --bifan-blue: #1a3a8f;
+  --dark-button: #2c2c2c;
+  --guide-red: #ff0000;
+  --guide-green: #00ff00;
+  --bg: #ffffff;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  font-family: var(--font-ui);
+  color: #111;
+  overscroll-behavior: none;
+}
+
+/* 모바일 전용: 최대 폭 430px, 중앙 정렬 */
+#app {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  height: 100dvh;
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ---------- 화면 공통 ---------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen--center {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* ---------- 브랜드 로고 ---------- */
+.bifan-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.bifan-logo__mark {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--bifan-blue);
+  line-height: 1;
+}
+.bifan-logo__sub {
+  font-size: 13px;
+  color: #555;
+  letter-spacing: 0.5px;
+}
+
+.logo-strip {
+  position: absolute;
+  bottom: 28px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+}
+.logo-strip__item {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9aa0aa;
+  letter-spacing: 0.3px;
+}
+.logo-strip__item:not(:last-child)::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 11px;
+  margin-left: 18px;
+  background: #d5d8de;
+  vertical-align: middle;
+}
+
+/* ---------- 애니메이션 ---------- */
+.fade-in {
+  animation: fadeIn 0.8s ease both;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- 모달 ---------- */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 50;
+}
+.modal-overlay.is-visible {
+  opacity: 1;
+}
+.modal-card {
+  width: 100%;
+  max-width: 320px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 22px 20px;
+  text-align: center;
+  transform: scale(0.94);
+  transition: transform 0.25s ease;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+.modal-overlay.is-visible .modal-card {
+  transform: scale(1);
+}
+.modal-body {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-line;
+  color: #222;
+}
+.modal-detail {
+  margin: 0 0 20px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--bifan-blue);
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ---------- 버튼 ---------- */
+.btn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 12px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn-primary {
+  background: var(--bifan-blue);
+}
+.btn-dark {
+  background: var(--dark-button);
+}
+.btn:hover {
+  filter: brightness(1.06);
+}
+
+/* ---------- 프로그레스 ---------- */
+.progress-label {
+  margin: 28px 0 12px;
+  font-size: 14px;
+  color: #444;
+}
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: #e6e8ee;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-track--inline {
+  max-width: 260px;
+}
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--bifan-blue);
+  border-radius: 4px;
+  transition: width 0.15s linear;
+}
+.progress-track.is-indeterminate .progress-fill {
+  width: 40%;
+  animation: indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes indeterminate {
+  0% {
+    margin-left: -40%;
+  }
+  100% {
+    margin-left: 100%;
+  }
+}
+
+/* ---------- 감사 메시지 ---------- */
+.message-page {
+  padding: 32px 28px;
+}
+.message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+}
+.message-paragraph {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.7;
+  text-align: center;
+  white-space: pre-line;
+  color: #1b1b1b;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 1s ease, transform 1s ease;
+}
+.message-paragraph.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- AR 카메라 ---------- */
+.ar-camera-page {
+  background: #000;
+}
+.ar-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+.ar-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ar-view--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #2a2f3a, #0c0e12);
+}
+.ar-placeholder-text {
+  color: #8a90a0;
+  font-size: 14px;
+}
+
+.guide-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* 영상/벽면(16:9)에 맞춘 인식 영역. */
+  width: 88vw;
+  max-width: 390px;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  --guide-color: var(--guide-red);
+}
+.guide-frame.is-found {
+  --guide-color: var(--guide-green);
+}
+.guide-corner {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--guide-color);
+  transition: border-color 0.2s ease;
+}
+.guide-tl {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+  border-top-left-radius: 6px;
+}
+.guide-tr {
+  top: 0;
+  right: 0;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 6px;
+}
+.guide-bl {
+  bottom: 0;
+  left: 0;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 6px;
+}
+.guide-br {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+  border-bottom-right-radius: 6px;
+}
+
+.ar-hint {
+  position: absolute;
+  bottom: 48px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.ar-dev-toggle {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 20;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ---------- AR 애니메이션 (Module A) ---------- */
+.ar-animation-page {
+  background: #000;
+  transition: opacity 0.6s ease;
+}
+.ar-animation-page.is-fading {
+  opacity: 0;
+}
+.ar-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ar-stage canvas {
+  display: block;
+}
+
+/* ---------- 스크롤 가능 화면 ---------- */
+.screen.scrollable {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- 상단 바 ---------- */
+.topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 8px;
+  flex: 0 0 auto;
+}
+.poster-camera-page .topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent);
+}
+.topbar__back,
+.topbar__help {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.topbar__help {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 700;
+}
+.topbar__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+}
+.topbar__spacer {
+  width: 36px;
+  flex: 0 0 auto;
+}
+
+/* ---------- 포스터 카메라 (Screen 7) ---------- */
+.poster-camera-page {
+  background: #000;
+}
+.poster-view {
+  position: absolute;
+  inset: 0;
+}
+.poster-nav {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 28px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.55), transparent);
+  z-index: 10;
+}
+.poster-nav__side {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+.poster-nav__shutter {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--bifan-blue);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px #fff inset;
+}
+
+/* 전/후면 전환 버튼 (카메라 뷰 우상단) */
+.poster-flip {
+  position: absolute;
+  top: 62px;
+  right: 16px;
+  z-index: 12;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+.poster-flip:active {
+  transform: scale(0.94);
+}
+
+/* 전면 카메라 미리보기 좌우 반전 */
+.ar-video--mirror {
+  transform: scaleX(-1);
+}
+.poster-nav__shutter:active {
+  transform: scale(0.95);
+}
+
+/* 다중 사진 수집 바 (촬영 화면, 하단 nav 위) */
+.poster-capture-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 118px;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+}
+.poster-thumbs {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  overflow-x: auto;
+}
+.poster-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 72px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: #222;
+}
+.poster-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.poster-thumb__remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.poster-proceed {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.poster-proceed:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ---------- 포스터 스타일 선택 (Screen 8) ---------- */
+.poster-style__people {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bifan-blue);
+}
+.poster-style__content {
+  padding: 2px 18px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.poster-style__preview {
+  width: 100%;
+  height: 128px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #eef0f4;
+}
+
+/* 드롭다운 / 텍스트 입력 */
+.dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dropdown__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+}
+.dropdown__field {
+  position: relative;
+}
+.dropdown__select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #d5d8de;
+  border-radius: 9px;
+  padding: 9px 38px 9px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  background: #fff;
+  color: #111;
+}
+.dropdown__chevron {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #8a90a0;
+  border-bottom: 2px solid #8a90a0;
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+.text-input {
+  width: 100%;
+  border: 1px solid #d5d8de;
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  background: #fff;
+}
+.text-input:focus,
+.dropdown__select:focus {
+  outline: none;
+  border-color: var(--bifan-blue);
+}
+.poster-style__actions {
+  display: flex;
+  gap: 10px;
+  padding: 6px 18px 18px;
+  margin-top: auto;
+}
+
+/* ---------- 포스터 생성 로딩 (Screen 9) ---------- */
+.poster-loading__title {
+  margin: 0 0 10px;
+  font-size: 30px;
+  font-weight: 800;
+  color: #111;
+}
+.poster-loading__sub {
+  margin: 0 0 28px;
+  font-size: 14px;
+  color: #666;
+}
+.poster-loading__retry {
+  margin-top: 24px;
+  max-width: 200px;
+}
+
+/* ---------- 포스터 완료 (Screen 10) ---------- */
+.poster-result-page {
+  padding: 14px 16px 18px;
+  align-items: center;
+  justify-content: center;
+}
+.poster-result__title {
+  margin: 0 0 12px;
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.poster-result__image {
+  /* 포스터(9:16) 전체가 잘리지 않고 보이도록 높이 기준으로 맞춤 */
+  width: auto;
+  max-width: 100%;
+  max-height: 62vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+}
+.poster-result__actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 20px;
+}
+.poster-result__remake {
+  margin-top: 16px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-family: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---------- AR 포스터 전시 (Screen 11) ---------- */
+.ar-exhibit-page {
+  background: #000;
+}
+.ar-exhibit-page .ar-view {
+  position: absolute;
+  inset: 0;
+}
+.ar-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+.ar-exhibit-page .topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent);
+  z-index: 10;
+}
+
+/* ---------- 안내 이미지 캐러셀 (Module B) ---------- */
+.image-carousel {
+  position: relative;
+  width: 88vw;
+  max-width: 360px;
+  transform: scale(0.96);
+  transition: transform 0.25s ease;
+}
+.modal-overlay.is-visible .image-carousel {
+  transform: scale(1);
+}
+.image-carousel__viewport {
+  overflow: hidden;
+  border-radius: 16px;
+  touch-action: pan-y;
+}
+.image-carousel__track {
+  display: flex;
+  transition: transform 0.3s ease;
+}
+.image-carousel__slide {
+  flex: 0 0 100%;
+}
+.ic-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* 이미지에 그려진 화살표/CTA 위치에 맞춘 투명 탭 영역 */
+.ic-nav {
+  position: absolute;
+  top: 30%;
+  height: 40%;
+  width: 26%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+.ic-nav--prev {
+  left: 0;
+}
+.ic-nav--next {
+  right: 0;
+}
+.ic-cta-zone {
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  bottom: 3%;
+  height: 15%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+
+/* ---------- 토스트 ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translate(-50%, 12px);
+  max-width: min(86%, 400px);
+  padding: 12px 18px;
+  border-radius: 22px;
+  background: rgba(20, 20, 20, 0.92);
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 100;
+  pointer-events: none;
+}
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------- 태블릿/아이패드 최적화 ---------- */
+/* 큰 화면에서는 모바일 레이아웃을 '큰 폰 프레임'으로 중앙에 배치하고,
+   주변을 어두운 배경으로 채워 의도된 화면처럼 보이게 합니다.
+   (세로·가로 모두 700px 이상일 때만 적용 → 가로 폰은 영향 없음) */
+@media (min-width: 700px) and (min-height: 700px) {
+  body {
+    background: radial-gradient(circle at 50% 28%, #232838, #0d0f15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+  }
+  #app {
+    width: 600px;
+    max-width: 600px;
+    height: min(100dvh, 1040px);
+    margin: 0;
+    border-radius: 30px;
+    box-shadow: 0 24px 90px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* 더 큰 화면(12.9" 아이패드 등)에서는 한 단계 더 크게. */
+@media (min-width: 1000px) and (min-height: 1000px) {
+  #app {
+    width: 680px;
+    max-width: 680px;
+    height: min(100dvh, 1180px);
+  }
+}

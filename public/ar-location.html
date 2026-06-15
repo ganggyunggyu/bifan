@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>BIFAN · 위치 기반 AR</title>
+
+    <!-- A-Frame -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <!-- AR.js (location-based): gps-projected-camera / gps-projected-entity-place 제공 -->
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+    <!--
+      8th Wall(오픈소스) 엔진 바이너리. a-scene 의 xrweb 컴포넌트(disableWorldTracking:false)
+      를 쓰려면 8th Wall A-Frame 통합이 필요합니다. 아래는 엔진 로더이며,
+      xrweb 사용 시 AR.js 위치 카메라와 트래킹이 충돌할 수 있어 둘 중 하나를 택합니다.
+      (현재 기본 동작 = AR.js 위치 기반. 8th Wall 월드트래킹으로 전환 시 주석 참고)
+    -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
+      async
+      crossorigin="anonymous"
+      data-preload-chunks="slam"
+    ></script>
+
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      .hud {
+        position: fixed; left: 0; right: 0; bottom: 18px;
+        text-align: center; color: #fff; font-family: -apple-system, 'Noto Sans KR', sans-serif;
+        font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.6); z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      요구사항:
+       - xrweb 컴포넌트 disableWorldTracking:false (8th Wall 월드트래킹)
+       - GPS: gps-projected-entity-place (위도 37.503880 / 경도 126.766103)
+       - 지면 감지 후 오브젝트 Y +1.5 (지면 기준 1.5m 상공)
+       - prop.glb (a-asset 프리로드)
+       - 씬 로드 시 자동 등장(탭/클릭 불필요)
+    -->
+    <a-scene
+      xrweb="disableWorldTracking: false"
+      vr-mode-ui="enabled: false"
+      embedded
+      arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false"
+      renderer="antialias: true; alpha: true"
+    >
+      <!-- prop.glb 프리로드 (TODO: public/assets/models/prop.glb 에 실제 파일 배치) -->
+      <a-assets>
+        <a-asset-item id="prop" src="/assets/models/prop.glb"></a-asset-item>
+      </a-assets>
+
+      <!--
+        GPS 위치에 오브젝트 배치. position y=1.5 → 지면 기준 1.5m 상공 고정.
+        ground-lock: 8th Wall 지면 감지 시에도 y를 1.5로 유지.
+        씬 로드 시 scale 0→1 애니메이션으로 자동 등장(탭 불필요).
+      -->
+      <a-entity
+        id="bifan-prop"
+        gps-projected-entity-place="latitude: 37.503880; longitude: 126.766103"
+        gltf-model="#prop"
+        position="0 1.5 0"
+        scale="0 0 0"
+        ground-lock="height: 1.5"
+        animation__appear="property: scale; to: 1 1 1; dur: 900; easing: easeOutBack; startEvents: appear"
+      ></a-entity>
+
+      <!-- 위치 기반 카메라 -->
+      <a-camera gps-projected-camera rotation-reader></a-camera>
+    </a-scene>
+
+    <p class="hud">구조물 주변에서 카메라를 천천히 움직여 주세요</p>
+
+    <script>
+      // 지면 기준 Y를 항상 height(1.5m)로 고정.
+      AFRAME.registerComponent('ground-lock', {
+        schema: { height: { type: 'number', default: 1.5 } },
+        init: function () {
+          const el = this.el;
+          const h = this.data.height;
+          // 8th Wall 지면 감지 이벤트가 있으면 그 높이에 +height.
+          const lock = () => {
+            const p = el.getAttribute('position') || { x: 0, y: h, z: 0 };
+            el.setAttribute('position', { x: p.x, y: h, z: p.z });
+          };
+          window.addEventListener('xrextrasrealityready', lock);
+          this.el.sceneEl.addEventListener('realityready', lock);
+          lock();
+
+          // 씬 로드 시 자동 등장 트리거(탭/클릭 불필요).
+          const fire = () => el.emit('appear');
+          if (this.el.sceneEl.hasLoaded) setTimeout(fire, 300);
+          else this.el.sceneEl.addEventListener('loaded', () => setTimeout(fire, 300));
+        },
+      });
+    </script>
+  </body>
+</html>

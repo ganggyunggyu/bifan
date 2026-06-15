@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vercel
+.DS_Store
+*.tsbuildinfo
+
+# OMC 작업용 내부 상태 (개발자 공유 불필요)
+.omc/
