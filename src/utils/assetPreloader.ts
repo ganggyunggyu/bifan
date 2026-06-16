@@ -1,4 +1,5 @@
 import { downloadWithProgress } from './assetDownloader';
+import { SKY_ANCHOR_PROP_MODELS } from '../config/arConfig';
 
 /**
  * 에셋 사전 다운로드 + 캐시.
@@ -9,6 +10,7 @@ import { downloadWithProgress } from './assetDownloader';
  */
 export const PRELOAD_ASSETS: string[] = [
   '/assets/video/module-a.mp4', // 핵심: 끊김 유발하는 큰 영상
+  ...SKY_ANCHOR_PROP_MODELS.map((model) => model.url),
   '/assets/guide/step1.png',
   '/assets/guide/step2.png',
   '/assets/guide/step3.png',

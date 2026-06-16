@@ -40,6 +40,44 @@ export const ANIMATION_TOTAL_MS = 22000;
  */
 export const ANIMATION_ASPECT = 16 / 9;
 
+export interface SkyAnchorPropModel {
+  url: string;
+  size: number;
+  delay: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * Module A 영상 종료 뒤 노출할 sky-anchor 프랍 GLB.
+ * sky-anchor-webar의 모델 자산/로딩 방식을 가져오되, Screen 6 본편 영상은 유지합니다.
+ */
+export const SKY_ANCHOR_PROP_MODELS: SkyAnchorPropModel[] = [
+  {
+    url: '/assets/models/sky-anchor/Slate_Ani_v02.glb',
+    size: 0.42,
+    delay: 0,
+    x: -0.48,
+    y: 0.04,
+  },
+  {
+    url: '/assets/models/sky-anchor/Megaphone_Ani_v02.glb',
+    size: 0.38,
+    delay: 0.15,
+    x: 0.02,
+    y: -0.08,
+  },
+  {
+    url: '/assets/models/sky-anchor/movie_ticket_ani.glb',
+    size: 0.4,
+    delay: 0.3,
+    x: 0.5,
+    y: 0.05,
+  },
+];
+
+export const POST_VIDEO_PROPS_HOLD_MS = 5000;
+
 // (구) GLB 경로 — 영상 방식으로 대체됨. 추후 하이브리드 시 참고용으로 보존.
 export const PROP_SCENE_GLB = '/assets/models/ar-scene.glb';
 
