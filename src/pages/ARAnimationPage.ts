@@ -95,7 +95,7 @@ export class ARAnimationPage implements Page {
     try {
       await this.propsPlayer?.load();
       if (this.disposed) return;
-      this.propsPlayer?.reveal();
+      this.propsPlayer?.reveal(true);
       this.setPhase('props');
       this.endTimer = window.setTimeout(
         () => this.navigateToMessage(),

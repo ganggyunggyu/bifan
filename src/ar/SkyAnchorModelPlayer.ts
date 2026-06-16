@@ -1,4 +1,5 @@
 import {
+  AnimationClip,
   AnimationMixer,
   Box3,
   Color,
@@ -10,6 +11,7 @@ import {
   Matrix4,
   Vector3,
   type AnimationAction,
+  type AnimationClip as ThreeAnimationClip,
   type Scene,
 } from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -50,6 +52,36 @@ function getVisibleMeshBounds(root: Group): Box3 {
     if (!worldBox.isEmpty()) bounds.union(worldBox);
   });
 
+  return bounds;
+}
+
+function getAnimatedScaleFitBounds(root: Group, clips: ThreeAnimationClip[]): Box3 {
+  const originals = new Map<Group | Mesh, Vector3>();
+
+  clips.forEach((clip) => {
+    clip.tracks.forEach((track) => {
+      if (!track.name.endsWith('.scale')) return;
+
+      const nodeName = track.name.slice(0, -'.scale'.length);
+      const object = root.getObjectByName(nodeName);
+      if (!(object instanceof Group) && !(object instanceof Mesh)) return;
+      if (!originals.has(object)) originals.set(object, object.scale.clone());
+
+      let maxX = object.scale.x;
+      let maxY = object.scale.y;
+      let maxZ = object.scale.z;
+      for (let index = 0; index < track.values.length; index += 3) {
+        maxX = Math.max(maxX, Math.abs(track.values[index] ?? maxX));
+        maxY = Math.max(maxY, Math.abs(track.values[index + 1] ?? maxY));
+        maxZ = Math.max(maxZ, Math.abs(track.values[index + 2] ?? maxZ));
+      }
+      object.scale.set(maxX, maxY, maxZ);
+    });
+  });
+
+  const bounds = getVisibleMeshBounds(root);
+  originals.forEach((scale, object) => object.scale.copy(scale));
+  root.updateMatrixWorld(true);
   return bounds;
 }
 
@@ -99,10 +131,15 @@ function brightenModelMaterials(root: Group): void {
   });
 }
 
-function fitModelToBounds(root: Group, descriptor: SkyAnchorPropModel, index: number): ModelItem {
+function fitModelToBounds(
+  root: Group,
+  descriptor: SkyAnchorPropModel,
+  index: number,
+  animations: ThreeAnimationClip[],
+): ModelItem {
   const wrapper = new Group();
   const pivot = new Group();
-  const box = getVisibleMeshBounds(root);
+  const box = getAnimatedScaleFitBounds(root, animations);
   const size = new Vector3();
   const center = new Vector3();
 
@@ -173,7 +210,7 @@ export class SkyAnchorModelPlayer {
         const descriptor = SKY_ANCHOR_PROP_MODELS[index];
         try {
           const gltf = await loader.loadAsync(cachedUrl(descriptor.url));
-          const item = fitModelToBounds(gltf.scene, descriptor, index);
+          const item = fitModelToBounds(gltf.scene, descriptor, index, gltf.animations);
           this.registerAnimations(item, gltf);
           this.items.push(item);
           this.root.add(item.wrapper);
@@ -256,8 +293,15 @@ export class SkyAnchorModelPlayer {
   }
 
   private registerAnimations(item: ModelItem, gltf: GLTF): void {
-    const clip = gltf.animations.find((candidate) => candidate.tracks.length > 0);
-    if (!clip) return;
+    const sourceClip = gltf.animations.find((candidate) => candidate.tracks.length > 0);
+    if (!sourceClip) return;
+
+    const anchoredTracks = sourceClip.tracks
+      .filter((track) => !track.name.endsWith('.position'))
+      .map((track) => track.clone());
+    const clip = anchoredTracks.length
+      ? new AnimationClip(`${sourceClip.name}-anchored`, sourceClip.duration, anchoredTracks)
+      : sourceClip;
 
     const mixer = new AnimationMixer(item.importedScene);
     const action = mixer.clipAction(clip);

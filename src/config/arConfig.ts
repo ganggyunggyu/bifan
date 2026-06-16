@@ -76,7 +76,7 @@ export const SKY_ANCHOR_PROP_MODELS: SkyAnchorPropModel[] = [
   },
 ];
 
-export const POST_VIDEO_PROPS_HOLD_MS = 5000;
+export const POST_VIDEO_PROPS_HOLD_MS = 6500;
 
 // (구) GLB 경로 — 영상 방식으로 대체됨. 추후 하이브리드 시 참고용으로 보존.
 export const PROP_SCENE_GLB = '/assets/models/ar-scene.glb';
