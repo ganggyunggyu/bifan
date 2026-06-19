@@ -97,6 +97,7 @@ export class ARAnimationPage implements Page {
       if (this.disposed) return;
       this.propsPlayer?.reveal(true);
       this.setPhase('props');
+      this.updatePropsDebugState();
       this.endTimer = window.setTimeout(
         () => this.navigateToMessage(),
         POST_VIDEO_PROPS_HOLD_MS,
@@ -127,10 +128,13 @@ export class ARAnimationPage implements Page {
     renderer.domElement.className = 'ar-canvas';
     stage.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight('#ffffff', 1.35));
-    const key = new THREE.DirectionalLight('#ffffff', 2.0);
-    key.position.set(-3, 5, 4);
+    scene.add(new THREE.AmbientLight('#ffffff', 1.45));
+    const key = new THREE.DirectionalLight('#ffffff', 2.1);
+    key.position.set(-3, 6, 4);
     scene.add(key);
+    const fill = new THREE.DirectionalLight('#ffffff', 1.2);
+    fill.position.set(3, 2, 5);
+    scene.add(fill);
 
     this.propsPlayer = new SkyAnchorModelPlayer();
     this.propsPlayer.attachToScene(scene);
@@ -153,8 +157,58 @@ export class ARAnimationPage implements Page {
       : 1 / 60;
     this.propsLastTime = time;
     this.propsPlayer?.update(delta, time);
+    this.updatePropsDebugState();
     this.propsRenderer.render(this.propsScene, this.propsCamera);
   };
+
+  private updatePropsDebugState(): void {
+    const state = this.propsPlayer?.getDebugState();
+    const screen = this.root.querySelector<HTMLElement>('.ar-animation-page');
+    if (!state || !screen) return;
+
+    screen.dataset.propBatch = state.activeBatch >= 0 ? String(state.activeBatch + 1) : '';
+    screen.dataset.propBatchTotal = String(state.totalBatches);
+    screen.dataset.propVisible = String(state.visibleCount);
+    screen.dataset.propLoaded = String(state.loadedCount);
+
+    const bounds = this.propsPlayer?.getVisibleWorldBounds();
+    if (!bounds || bounds.isEmpty() || !this.propsCamera || !this.propsRenderer) return;
+
+    const canvas = this.propsRenderer.domElement;
+    const screenBounds = {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    };
+
+    [
+      [bounds.min.x, bounds.min.y, bounds.min.z],
+      [bounds.min.x, bounds.min.y, bounds.max.z],
+      [bounds.min.x, bounds.max.y, bounds.min.z],
+      [bounds.min.x, bounds.max.y, bounds.max.z],
+      [bounds.max.x, bounds.min.y, bounds.min.z],
+      [bounds.max.x, bounds.min.y, bounds.max.z],
+      [bounds.max.x, bounds.max.y, bounds.min.z],
+      [bounds.max.x, bounds.max.y, bounds.max.z],
+    ].forEach(([x, y, z]) => {
+      const projected = new THREE.Vector3(x, y, z).project(this.propsCamera!);
+      const screenX = (projected.x * 0.5 + 0.5) * canvas.clientWidth;
+      const screenY = (-projected.y * 0.5 + 0.5) * canvas.clientHeight;
+
+      screenBounds.minX = Math.min(screenBounds.minX, screenX);
+      screenBounds.minY = Math.min(screenBounds.minY, screenY);
+      screenBounds.maxX = Math.max(screenBounds.maxX, screenX);
+      screenBounds.maxY = Math.max(screenBounds.maxY, screenY);
+    });
+
+    if (!Number.isFinite(screenBounds.minX)) return;
+
+    screen.dataset.propScreenCenterX = String(Math.round((screenBounds.minX + screenBounds.maxX) / 2));
+    screen.dataset.propScreenCenterY = String(Math.round((screenBounds.minY + screenBounds.maxY) / 2));
+    screen.dataset.propScreenWidth = String(Math.round(screenBounds.maxX - screenBounds.minX));
+    screen.dataset.propScreenHeight = String(Math.round(screenBounds.maxY - screenBounds.minY));
+  }
 
   private resizeProps(): void {
     if (!this.propsRenderer || !this.propsCamera) return;

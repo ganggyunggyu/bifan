@@ -1,5 +1,4 @@
 import {
-  AnimationClip,
   AnimationMixer,
   Box3,
   Color,
@@ -8,7 +7,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   LoopOnce,
-  Matrix4,
   Vector3,
   type AnimationAction,
   type AnimationClip as ThreeAnimationClip,
@@ -16,7 +14,12 @@ import {
 } from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { SKY_ANCHOR_PROP_MODELS, type SkyAnchorPropModel } from '../config/arConfig';
+import {
+  SKY_ANCHOR_MODEL_BATCH_HOLD_MS,
+  SKY_ANCHOR_MODEL_BATCH_SIZE,
+  SKY_ANCHOR_PROP_MODELS,
+  type SkyAnchorPropModel,
+} from '../config/arConfig';
 import { cachedUrl } from '../utils/assetPreloader';
 
 interface ModelItem {
@@ -24,6 +27,7 @@ interface ModelItem {
   pivot: Group;
   importedScene: Group;
   actions: AnimationAction[];
+  slot: Vector3;
   delay: number;
   started: boolean;
 }
@@ -34,55 +38,36 @@ export interface SkyAnchorModelProgress {
   total: number;
 }
 
-function getVisibleMeshBounds(root: Group): Box3 {
-  root.updateMatrixWorld(true);
-  const bounds = new Box3();
-  const meshBox = new Box3();
-  const worldBox = new Box3();
-  const matrix = new Matrix4();
-
-  root.traverse((child) => {
-    if (!(child instanceof Mesh)) return;
-    if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
-    if (!child.geometry.boundingBox) return;
-
-    meshBox.copy(child.geometry.boundingBox);
-    matrix.copy(child.matrixWorld);
-    worldBox.copy(meshBox).applyMatrix4(matrix);
-    if (!worldBox.isEmpty()) bounds.union(worldBox);
-  });
-
-  return bounds;
+export interface SkyAnchorModelDebugState {
+  activeBatch: number;
+  totalBatches: number;
+  visibleCount: number;
+  loadedCount: number;
 }
 
-function getAnimatedScaleFitBounds(root: Group, clips: ThreeAnimationClip[]): Box3 {
-  const originals = new Map<Group | Mesh, Vector3>();
+const BATCH_MODEL_SLOTS = [
+  new Vector3(-0.36, 0.02, 0),
+  new Vector3(0, 0.02, 0),
+  new Vector3(0.36, 0.02, 0),
+];
+const TWO_MODEL_BATCH_SLOTS = [
+  new Vector3(-0.18, 0.02, 0),
+  new Vector3(0.18, 0.02, 0),
+];
+const MAX_SLOT_DRIFT_X = 0.08;
+const MAX_SLOT_DRIFT_Y = 0.08;
 
-  clips.forEach((clip) => {
-    clip.tracks.forEach((track) => {
-      if (!track.name.endsWith('.scale')) return;
+function getBatchSlot(index: number): Vector3 {
+  const batchStart = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE) * SKY_ANCHOR_MODEL_BATCH_SIZE;
+  const batchCount = Math.min(
+    SKY_ANCHOR_MODEL_BATCH_SIZE,
+    SKY_ANCHOR_PROP_MODELS.length - batchStart,
+  );
+  const slotIndex = index - batchStart;
 
-      const nodeName = track.name.slice(0, -'.scale'.length);
-      const object = root.getObjectByName(nodeName);
-      if (!(object instanceof Group) && !(object instanceof Mesh)) return;
-      if (!originals.has(object)) originals.set(object, object.scale.clone());
-
-      let maxX = object.scale.x;
-      let maxY = object.scale.y;
-      let maxZ = object.scale.z;
-      for (let index = 0; index < track.values.length; index += 3) {
-        maxX = Math.max(maxX, Math.abs(track.values[index] ?? maxX));
-        maxY = Math.max(maxY, Math.abs(track.values[index + 1] ?? maxY));
-        maxZ = Math.max(maxZ, Math.abs(track.values[index + 2] ?? maxZ));
-      }
-      object.scale.set(maxX, maxY, maxZ);
-    });
-  });
-
-  const bounds = getVisibleMeshBounds(root);
-  originals.forEach((scale, object) => object.scale.copy(scale));
-  root.updateMatrixWorld(true);
-  return bounds;
+  if (batchCount === 1) return BATCH_MODEL_SLOTS[1];
+  if (batchCount === 2) return TWO_MODEL_BATCH_SLOTS[slotIndex] ?? TWO_MODEL_BATCH_SLOTS[0];
+  return BATCH_MODEL_SLOTS[slotIndex] ?? BATCH_MODEL_SLOTS[1];
 }
 
 function createLoader(): { loader: GLTFLoader; dispose: () => void } {
@@ -104,7 +89,7 @@ function brightenModelMaterials(root: Group): void {
     if (!(child instanceof Mesh)) return;
 
     child.frustumCulled = false;
-    child.renderOrder = 20;
+    child.renderOrder = 999;
     const materials = Array.isArray(child.material) ? child.material : [child.material];
     const converted = materials.map((material) => {
       const source = material as typeof material & {
@@ -121,8 +106,10 @@ function brightenModelMaterials(root: Group): void {
         color,
         map,
         side: DoubleSide,
-        depthTest: true,
-        depthWrite: true,
+        transparent: false,
+        opacity: 1,
+        depthTest: false,
+        depthWrite: false,
         toneMapped: false,
       });
     });
@@ -135,11 +122,11 @@ function fitModelToBounds(
   root: Group,
   descriptor: SkyAnchorPropModel,
   index: number,
-  animations: ThreeAnimationClip[],
 ): ModelItem {
   const wrapper = new Group();
   const pivot = new Group();
-  const box = getAnimatedScaleFitBounds(root, animations);
+  const slot = getBatchSlot(index).clone();
+  const box = new Box3().setFromObject(root);
   const size = new Vector3();
   const center = new Vector3();
 
@@ -149,8 +136,9 @@ function fitModelToBounds(
   pivot.add(root);
 
   const maxAxis = Math.max(size.x, size.y, size.z, 0.001);
-  wrapper.name = `sky-anchor-test-model-${index}`;
-  wrapper.position.set(descriptor.x, descriptor.y, 0);
+  wrapper.name = `bifan-animated-model-${index}`;
+  wrapper.position.copy(slot);
+  wrapper.rotation.set(0, 0, 0);
   wrapper.scale.setScalar(descriptor.size / maxAxis);
   wrapper.visible = false;
   wrapper.add(pivot);
@@ -162,14 +150,69 @@ function fitModelToBounds(
     pivot,
     importedScene: root,
     actions: [],
-    delay: descriptor.delay,
+    slot,
+    delay: descriptor.delay ?? 0,
     started: false,
   };
+}
+
+function fitModelToAnimationBounds(
+  item: ModelItem,
+  clip: ThreeAnimationClip,
+  descriptor: SkyAnchorPropModel,
+): void {
+  const bounds = new Box3();
+  const sampleBox = new Box3();
+  const fitSize = new Vector3();
+  const sampleCenter = new Vector3();
+  const sampleSize = new Vector3();
+  const anchorCenter = new Vector3();
+  const sampleMixer = new AnimationMixer(item.importedScene);
+  const sampleAction = sampleMixer.clipAction(clip);
+  const sampleCount = Math.max(12, Math.ceil(clip.duration * 10));
+  let anchorAxis = 0;
+
+  item.wrapper.scale.setScalar(1);
+  sampleAction.reset();
+  sampleAction.play();
+
+  for (let index = 0; index <= sampleCount; index += 1) {
+    sampleMixer.setTime((clip.duration * index) / sampleCount);
+    item.wrapper.updateMatrixWorld(true);
+    sampleBox.setFromObject(item.wrapper);
+
+    if (!sampleBox.isEmpty()) {
+      bounds.union(sampleBox);
+      sampleBox.getSize(sampleSize);
+      const sampleAxis = Math.max(sampleSize.x, sampleSize.y, sampleSize.z);
+      if (sampleAxis > anchorAxis) {
+        sampleBox.getCenter(sampleCenter);
+        anchorCenter.copy(sampleCenter).sub(item.wrapper.position);
+        anchorAxis = sampleAxis;
+      }
+    }
+  }
+
+  sampleMixer.setTime(0);
+  sampleAction.stop();
+  sampleMixer.uncacheRoot(item.importedScene);
+  item.wrapper.updateMatrixWorld(true);
+
+  if (bounds.isEmpty()) return;
+
+  bounds.getSize(fitSize);
+  item.pivot.position.sub(anchorCenter);
+  const scaleAxis = anchorAxis > 0
+    ? anchorAxis
+    : Math.max(fitSize.x, fitSize.y, fitSize.z, 0.001);
+  item.wrapper.scale.setScalar(descriptor.size / scaleAxis);
+  item.wrapper.updateMatrixWorld(true);
 }
 
 function resetItem(item: ModelItem): void {
   item.started = false;
   item.wrapper.visible = false;
+  item.wrapper.position.copy(item.slot);
   item.actions.forEach((action) => {
     action.stop();
     action.reset();
@@ -187,10 +230,11 @@ export class SkyAnchorModelPlayer {
   private revealStartedAt: number | null = null;
   private playAnimations = false;
   private loaded = false;
+  private activeBatch = -1;
 
   constructor() {
-    this.root.name = 'sky-anchor-model-test-root';
-    this.root.position.set(0, -0.18, -1.85);
+    this.root.name = 'bifan-camera-locked-anchor';
+    this.root.position.set(0, 0, -2.2);
     this.root.rotation.set(0, 0, 0);
     this.root.visible = false;
   }
@@ -210,8 +254,8 @@ export class SkyAnchorModelPlayer {
         const descriptor = SKY_ANCHOR_PROP_MODELS[index];
         try {
           const gltf = await loader.loadAsync(cachedUrl(descriptor.url));
-          const item = fitModelToBounds(gltf.scene, descriptor, index, gltf.animations);
-          this.registerAnimations(item, gltf);
+          const item = fitModelToBounds(gltf.scene, descriptor, index);
+          this.registerAnimations(item, gltf, descriptor);
           this.items.push(item);
           this.root.add(item.wrapper);
           loaded += 1;
@@ -240,6 +284,7 @@ export class SkyAnchorModelPlayer {
     this.playAnimations = playAnimations;
     this.items.forEach(resetItem);
     this.revealStartedAt = null;
+    this.activeBatch = -1;
     this.root.visible = true;
     if (!playAnimations) {
       this.items.forEach((item) => {
@@ -257,8 +302,23 @@ export class SkyAnchorModelPlayer {
     }
 
     const revealElapsed = elapsedSeconds - this.revealStartedAt;
-    this.items.forEach((item) => {
-      if (item.started || revealElapsed < item.delay) return;
+    const batchDuration = SKY_ANCHOR_MODEL_BATCH_HOLD_MS / 1000;
+    const totalBatches = Math.max(1, Math.ceil(this.items.length / SKY_ANCHOR_MODEL_BATCH_SIZE));
+    const activeBatch = Math.min(
+      Math.floor(revealElapsed / batchDuration),
+      totalBatches - 1,
+    );
+    const batchElapsed = revealElapsed - activeBatch * batchDuration;
+    this.activeBatch = activeBatch;
+
+    this.items.forEach((item, index) => {
+      const itemBatch = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE);
+      if (itemBatch !== activeBatch) {
+        if (item.started || item.wrapper.visible) resetItem(item);
+        return;
+      }
+
+      if (item.started || batchElapsed < item.delay) return;
       item.started = true;
       item.wrapper.visible = true;
       item.actions.forEach((action) => {
@@ -269,6 +329,29 @@ export class SkyAnchorModelPlayer {
       });
     });
     this.mixers.forEach((mixer) => mixer.update(deltaSeconds));
+    this.constrainVisibleItemsToSlots();
+  }
+
+  getDebugState(): SkyAnchorModelDebugState {
+    return {
+      activeBatch: this.activeBatch,
+      totalBatches: Math.ceil(this.items.length / SKY_ANCHOR_MODEL_BATCH_SIZE),
+      visibleCount: this.items.filter((item) => item.wrapper.visible).length,
+      loadedCount: this.items.length,
+    };
+  }
+
+  getVisibleWorldBounds(): Box3 {
+    const bounds = new Box3();
+    const itemBounds = new Box3();
+
+    this.items.forEach((item) => {
+      if (!item.wrapper.visible) return;
+      itemBounds.setFromObject(item.wrapper);
+      if (!itemBounds.isEmpty()) bounds.union(itemBounds);
+    });
+
+    return bounds;
   }
 
   dispose(): void {
@@ -290,27 +373,53 @@ export class SkyAnchorModelPlayer {
     this.mixerRoots = [];
     this.items = [];
     this.loaded = false;
+    this.activeBatch = -1;
   }
 
-  private registerAnimations(item: ModelItem, gltf: GLTF): void {
+  private registerAnimations(item: ModelItem, gltf: GLTF, descriptor: SkyAnchorPropModel): void {
     const sourceClip = gltf.animations.find((candidate) => candidate.tracks.length > 0);
     if (!sourceClip) return;
 
-    const anchoredTracks = sourceClip.tracks
-      .filter((track) => !track.name.endsWith('.position'))
-      .map((track) => track.clone());
-    const clip = anchoredTracks.length
-      ? new AnimationClip(`${sourceClip.name}-anchored`, sourceClip.duration, anchoredTracks)
-      : sourceClip;
+    fitModelToAnimationBounds(item, sourceClip, descriptor);
 
     const mixer = new AnimationMixer(item.importedScene);
-    const action = mixer.clipAction(clip);
+    const action = mixer.clipAction(sourceClip);
     action.setLoop(LoopOnce, 1);
     action.enabled = true;
     action.paused = true;
     action.clampWhenFinished = true;
+    action.timeScale = Math.max(
+      1,
+      sourceClip.duration / Math.max(SKY_ANCHOR_MODEL_BATCH_HOLD_MS / 1000 - item.delay - 0.25, 0.5),
+    );
     item.actions.push(action);
     this.mixers.push(mixer);
     this.mixerRoots.push(item.importedScene);
+  }
+
+  private constrainVisibleItemsToSlots(): void {
+    const bounds = new Box3();
+    const center = new Vector3();
+
+    this.root.updateMatrixWorld(true);
+    this.items.forEach((item) => {
+      if (!item.wrapper.visible) return;
+
+      bounds.setFromObject(item.wrapper);
+      if (bounds.isEmpty()) return;
+
+      bounds.getCenter(center);
+      this.root.worldToLocal(center);
+
+      const driftX = center.x - item.slot.x;
+      if (Math.abs(driftX) > MAX_SLOT_DRIFT_X) {
+        item.wrapper.position.x -= driftX - Math.sign(driftX) * MAX_SLOT_DRIFT_X;
+      }
+
+      const driftY = center.y - item.slot.y;
+      if (Math.abs(driftY) > MAX_SLOT_DRIFT_Y) {
+        item.wrapper.position.y -= driftY - Math.sign(driftY) * MAX_SLOT_DRIFT_Y;
+      }
+    });
   }
 }

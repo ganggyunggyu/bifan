@@ -1,5 +1,5 @@
 /**
- * AI 포스터 생성 API 연동 (프롬프트 가이드 v2).
+ * AI 포스터 생성 API 연동 (프롬프트 가이드 v3).
  *
  * `generatePoster`가 서버리스 함수 `/api/generate-poster`(gpt-image-1 edits)를
  * 호출합니다. 텍스트(제목·부제·로렐)는 이미지 모델이 직접 렌더하므로 클라이언트
@@ -20,6 +20,7 @@ export interface PosterGenerateRequest {
   lighting: string;
   composition: string;
   title: string;
+  subtitle?: string;
 }
 
 export interface PosterGenerateResponse {
@@ -31,7 +32,12 @@ export function buildPromptRequest(
   images: string[],
   state: Pick<
     AppState,
-    'selectedGenre' | 'selectedMood' | 'selectedLighting' | 'selectedComposition' | 'movieTitle'
+    | 'selectedGenre'
+    | 'selectedMood'
+    | 'selectedLighting'
+    | 'selectedComposition'
+    | 'movieTitle'
+    | 'movieSubtitle'
   >,
 ): PosterGenerateRequest {
   return {
@@ -41,6 +47,7 @@ export function buildPromptRequest(
     lighting: state.selectedLighting,
     composition: state.selectedComposition,
     title: state.movieTitle,
+    subtitle: state.movieSubtitle,
   };
 }
 
@@ -122,6 +129,7 @@ export async function generatePoster(
         lighting: req.lighting,
         composition: req.composition,
         title: req.title,
+        subtitle: req.subtitle,
       }),
     });
     if (res.ok) {
@@ -192,13 +200,20 @@ async function generatePlaceholderPoster(
   ctx.font = '800 68px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
   wrapText(ctx, title, W / 2, H - 170, W - 80, 74);
 
+  const subtitle = (req.subtitle || '').trim();
+  if (subtitle) {
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.font = '700 24px -apple-system, "Noto Sans KR", sans-serif';
+    ctx.fillText(subtitle, W / 2, H - 110);
+  }
+
   // 푸터 로렐
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
   ctx.font = '600 22px -apple-system, "Noto Sans KR", sans-serif';
-  ctx.fillText('제30회 부천국제판타스틱영화제', W / 2, H - 90);
+  ctx.fillText('제30회 부천국제판타스틱영화제', W / 2, H - 76);
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.font = '500 20px -apple-system, "Noto Sans KR", sans-serif';
-  ctx.fillText('2026 여름 대개봉', W / 2, H - 52);
+  ctx.fillText('2026 여름 대개봉', W / 2, H - 42);
 
   // 합성 지연 시뮬레이션(실제 API 대기감)
   await new Promise((r) => setTimeout(r, 1200));

@@ -26,6 +26,7 @@ export interface AppState {
   selectedLighting: string;
   selectedComposition: string;
   movieTitle: string;
+  movieSubtitle: string;
   generatedPosterUrl: string | null;
 
   // 전시 (Phase 3)
@@ -44,6 +45,7 @@ const initialState: AppState = {
   selectedLighting: '',
   selectedComposition: '',
   movieTitle: '',
+  movieSubtitle: '',
   generatedPosterUrl: null,
   exhibitSlots: [],
   myPosterSlotId: null,

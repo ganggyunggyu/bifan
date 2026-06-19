@@ -36,14 +36,14 @@ npm run build      # 타입체크 + 프로덕션 빌드
 재생합니다. 현재는 dev 프리뷰 모드(카메라 피드 위 영상 plane 오버레이)로 동작하며,
 8th Wall 앱 키/이미지 타겟이 준비되면 `PropAnimationPlayer.attachToEighthWall()` +
 `updateAnchorPose()`로 인식된 구조물 위치에 앵커링됩니다 (`ar/PropAnimationPlayer.ts`).
-영상 종료 뒤에는 `sky-anchor-webar`에서 가져온 GLB 프랍 3종(슬레이트, 메가폰, 티켓)을
-같은 Screen 6 오버레이에서 잠시 표시한 뒤 감사 메시지 화면으로 전환합니다
+영상 종료 뒤에는 `sky-anchor-webar`의 GLB 모델 전체를 3개씩 batch로 순차 재생한 뒤
+감사 메시지 화면으로 전환합니다
 (`ar/SkyAnchorModelPlayer.ts`).
 
-**Module B(AI 포스터)**: AI 생성 API는 미정(TODO #8)이라 `api/posterGenerate.ts`에
-인터페이스만 확정하고, 현재는 클라이언트에서 사진 + 제목 + 스타일을 합성한
-**placeholder 포스터**를 생성합니다. 실제 API 확정 시 `generatePoster` 내부의
-canvas 합성을 fetch 호출로 교체하면 됩니다.
+**Module B(AI 포스터)**: `포스터_프롬프트_가이드.md` v3 기준으로
+장르8·분위기8·조명8·구도8 선택값과 장르별 자동 표정/제목/영문 부제를 조합합니다.
+`api/generate-poster.ts`가 OpenAI 이미지 edit API를 호출하고, 키 미설정/실패 시
+클라이언트 placeholder 포스터로 폴백합니다.
 
 **AR 포스터 전시(Screen 11)**: 8th Wall이 2026년 **MIT 오픈소스(앱 키 불필요)**로
 공개되어, `@8thwall/engine-binary`(CDN, SLAM 포함)를 동적 로드해 월드 트래킹 AR로
@@ -60,8 +60,8 @@ canvas 합성을 fetch 호출로 교체하면 됩니다.
 | # | 항목 | 위치 |
 |---|------|------|
 | 1 | 다운로드 데이터 용량 | `config/appConfig.ts` → `DOWNLOAD_SIZE_MB` |
-| 2 | 드롭다운 선택지 | ✅ 확정(장르8·분위기6·조명6·구도6=1,728) → `config/posterOptions.ts` |
-| 3 | AI 이미지 생성 API | `api/posterGenerate.ts` (placeholder, 실제 API 미정) |
+| 2 | 드롭다운 선택지 | ✅ 확정(장르8·분위기8·조명8·구도8=4,096) → `config/posterOptions.ts` |
+| 3 | AI 이미지 생성 API | `api/generate-poster.ts` + 실패 시 `api/posterGenerate.ts` placeholder |
 | 4 | 프랍 애니메이션 에셋 | mp4 본편 + sky-anchor 후속 GLB 프랍 |
 | 5 | 애니메이션 재생시간 | 22초로 확정 → `config/arConfig.ts` → `ANIMATION_TOTAL_MS` |
 | 6 | 최종 메시지 텍스트 | 영상에 포함 추정 (오버레이 필요시 `AR_FINAL_MESSAGE`) |

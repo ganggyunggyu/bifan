@@ -1,10 +1,14 @@
 node_modules
 dist
 dist-ssr
+.env
+.env.*
+!.env.example
 *.local
 .vercel
 .DS_Store
 *.tsbuildinfo
+work/
 
 # OMC 작업용 내부 상태 (개발자 공유 불필요)
 .omc/

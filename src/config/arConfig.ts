@@ -43,9 +43,7 @@ export const ANIMATION_ASPECT = 16 / 9;
 export interface SkyAnchorPropModel {
   url: string;
   size: number;
-  delay: number;
-  x: number;
-  y: number;
+  delay?: number;
 }
 
 /**
@@ -54,29 +52,76 @@ export interface SkyAnchorPropModel {
  */
 export const SKY_ANCHOR_PROP_MODELS: SkyAnchorPropModel[] = [
   {
-    url: '/assets/models/sky-anchor/Slate_Ani_v02.glb',
-    size: 0.42,
-    delay: 0,
-    x: -0.48,
-    y: 0.04,
+    url: '/assets/models/sky-anchor/Iron_man_ani_v04.glb',
+    size: 0.624,
+  },
+  {
+    url: '/assets/models/sky-anchor/harrypotter_ani_v08.glb',
+    size: 0.39,
   },
   {
     url: '/assets/models/sky-anchor/Megaphone_Ani_v02.glb',
-    size: 0.38,
-    delay: 0.15,
-    x: 0.02,
-    y: -0.08,
+    size: 0.546,
+  },
+  {
+    url: '/assets/models/sky-anchor/Slate_Ani_v02.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/indian_hat_ani.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/movie_camera_ani_.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/r2d2_ani.glb',
+    size: 0.52,
   },
   {
     url: '/assets/models/sky-anchor/movie_ticket_ani.glb',
-    size: 0.4,
-    delay: 0.3,
-    x: 0.5,
-    y: 0.05,
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/gama_ani.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/man_in_black_medicine_ani.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/record_mic_glb_0616_V01.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/pan_0616_glb_V02.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/woodbox_0616_glb_v01.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/movie_reel_0616_glb_V02.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/texi_0616_V07.glb',
+    size: 0.52,
+  },
+  {
+    url: '/assets/models/sky-anchor/handphone_glb.glb',
+    size: 0.52,
   },
 ];
 
-export const POST_VIDEO_PROPS_HOLD_MS = 6500;
+export const SKY_ANCHOR_MODEL_BATCH_SIZE = 3;
+export const SKY_ANCHOR_MODEL_BATCH_HOLD_MS = 6000;
+export const POST_VIDEO_PROPS_HOLD_MS =
+  Math.ceil(SKY_ANCHOR_PROP_MODELS.length / SKY_ANCHOR_MODEL_BATCH_SIZE) *
+  SKY_ANCHOR_MODEL_BATCH_HOLD_MS;
 
 // (구) GLB 경로 — 영상 방식으로 대체됨. 추후 하이브리드 시 참고용으로 보존.
 export const PROP_SCENE_GLB = '/assets/models/ar-scene.glb';

@@ -8,6 +8,8 @@ import {
   LIGHTING_OPTIONS,
   COMPOSITION_OPTIONS,
   RECOMMENDED_TITLES,
+  RECOMMENDED_SUBTITLES,
+  getPosterTitlePair,
 } from '../config/posterOptions';
 import { appState } from '../store/appState';
 import { router, ROUTES } from '../utils/router';
@@ -51,11 +53,20 @@ export class PosterStylePage implements Page {
     content.appendChild(peopleInfo);
 
     // 드롭다운들 + 상태.
+    const current = appState.get();
     const state = {
-      genre: GENRE_OPTIONS[0],
-      mood: MOOD_OPTIONS[0],
-      lighting: LIGHTING_OPTIONS[0],
-      composition: COMPOSITION_OPTIONS[0],
+      genre: current.selectedGenre || GENRE_OPTIONS[0],
+      mood: current.selectedMood || MOOD_OPTIONS[0],
+      lighting: current.selectedLighting || LIGHTING_OPTIONS[0],
+      composition: current.selectedComposition || COMPOSITION_OPTIONS[0],
+    };
+
+    const applyRandomTitle = (genreLabel: string): void => {
+      const pair = getPosterTitlePair(genreLabel);
+      titleInput.value = pair.ko;
+      subtitleInput.value = pair.en;
+      titleInput.placeholder = `예) ${RECOMMENDED_TITLES[genreLabel] ?? '부천에서 생긴 일'}`;
+      subtitleInput.placeholder = `예) ${RECOMMENDED_SUBTITLES[genreLabel] ?? 'BIFAN POSTER'}`;
     };
 
     const genre = new Dropdown({
@@ -64,8 +75,7 @@ export class PosterStylePage implements Page {
       value: state.genre,
       onChange: (v) => {
         state.genre = v;
-        // 장르별 추천 제목을 placeholder로 안내(빈칸이면 제출 시 자동 사용).
-        titleInput.placeholder = `예) ${RECOMMENDED_TITLES[v] ?? '부천에서 생긴 일'}`;
+        applyRandomTitle(v);
       },
     });
     const mood = new Dropdown({
@@ -91,17 +101,44 @@ export class PosterStylePage implements Page {
     // 영화 제목 입력.
     const titleWrap = document.createElement('label');
     titleWrap.className = 'dropdown';
+    const titleLabelRow = document.createElement('span');
+    titleLabelRow.className = 'dropdown__label dropdown__label--row';
     const titleLabel = document.createElement('span');
-    titleLabel.className = 'dropdown__label';
-    titleLabel.textContent = '영화 제목 입력';
+    titleLabel.textContent = '영화 제목';
+    const reroll = document.createElement('button');
+    reroll.type = 'button';
+    reroll.className = 'poster-title-reroll';
+    reroll.textContent = '다른 제목';
+    reroll.addEventListener('click', () => applyRandomTitle(state.genre));
+    titleLabelRow.append(titleLabel, reroll);
     const titleInput = document.createElement('input');
     titleInput.type = 'text';
     titleInput.className = 'text-input';
     titleInput.placeholder = `예) ${RECOMMENDED_TITLES[state.genre] ?? '부천에서 생긴 일'}`;
     titleInput.maxLength = 30;
-    titleInput.value = appState.get().movieTitle;
-    titleWrap.append(titleLabel, titleInput);
+    titleInput.value = current.movieTitle;
+    titleWrap.append(titleLabelRow, titleInput);
     content.appendChild(titleWrap);
+
+    const subtitleWrap = document.createElement('label');
+    subtitleWrap.className = 'dropdown';
+    const subtitleLabel = document.createElement('span');
+    subtitleLabel.className = 'dropdown__label';
+    subtitleLabel.textContent = '영문 부제';
+    const subtitleInput = document.createElement('input');
+    subtitleInput.type = 'text';
+    subtitleInput.className = 'text-input';
+    subtitleInput.placeholder = `예) ${RECOMMENDED_SUBTITLES[state.genre] ?? 'BIFAN POSTER'}`;
+    subtitleInput.maxLength = 40;
+    subtitleInput.value = current.movieSubtitle;
+    subtitleWrap.append(subtitleLabel, subtitleInput);
+    content.appendChild(subtitleWrap);
+
+    if (!titleInput.value.trim()) {
+      applyRandomTitle(state.genre);
+    } else if (!subtitleInput.value.trim()) {
+      subtitleInput.value = RECOMMENDED_SUBTITLES[state.genre] ?? '';
+    }
 
     screen.appendChild(content);
 
@@ -116,12 +153,15 @@ export class PosterStylePage implements Page {
       // 제목 미입력 시 장르 추천 제목을 사용.
       const title =
         titleInput.value.trim() || RECOMMENDED_TITLES[state.genre] || '';
+      const subtitle =
+        subtitleInput.value.trim() || RECOMMENDED_SUBTITLES[state.genre] || '';
       appState.set({
         selectedGenre: state.genre,
         selectedMood: state.mood,
         selectedLighting: state.lighting,
         selectedComposition: state.composition,
         movieTitle: title,
+        movieSubtitle: subtitle,
       });
       router.navigate(ROUTES.posterLoading);
     });

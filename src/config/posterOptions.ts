@@ -1,68 +1,218 @@
 /**
- * 포스터 스타일 선택지 (Screen 8) — BIFAN 프롬프트 가이드 v2.
- * 인물수(사진 장수에서 자동 도출) × 장르8 × 분위기6 × 조명6 × 구도6.
+ * 포스터 스타일 선택지 (Screen 8) — BIFAN 프롬프트 가이드 v3.
  *
- * NOTE: 여기의 라벨 문자열은 `api/generate-poster.ts`의 프롬프트 맵 키와
- *       반드시 정확히 일치해야 합니다(불일치 시 프롬프트 조각이 빠짐).
- * 각 배열 첫 항목을 기본 선택값으로 사용합니다.
+ * 사진 1~4장 + 장르8 × 분위기8 × 조명8 × 구도8.
+ * 장르 선택 시 표정과 제목 후보가 자동 결정됩니다.
  */
 
-// CATEGORY 01 — 장르 Genre (8)
-export const GENRE_OPTIONS = [
-  '액션',
-  'SF',
-  '로맨스',
-  '공포',
-  '코미디',
-  '느와르/범죄',
-  '판타지',
-  '재난',
+export interface PosterTitlePair {
+  ko: string;
+  en: string;
+}
+
+interface PosterKeywordOption {
+  label: string;
+  prompt: string;
+}
+
+interface PosterGenreOption extends PosterKeywordOption {
+  expression: string;
+  titles: PosterTitlePair[];
+}
+
+export interface BuildPosterPromptInput {
+  genre: string;
+  mood: string;
+  lighting: string;
+  composition: string;
+  title: string;
+  subtitle?: string;
+}
+
+export const POSTER_GENRES: PosterGenreOption[] = [
+  {
+    label: '액션',
+    prompt: 'action, smoke & debris, city',
+    expression: 'fierce determined',
+    titles: [
+      { ko: '최후의 작전', en: 'THE LAST OPERATION' },
+      { ko: '블랙 타깃', en: 'BLACK TARGET' },
+      { ko: '멸살', en: 'ANNIHILATION' },
+      { ko: '라스트 미션', en: 'LAST MISSION' },
+      { ko: '분노의 추적', en: 'FURY CHASE' },
+    ],
+  },
+  {
+    label: 'SF',
+    prompt: 'sci-fi, neon future city',
+    expression: 'calm resolute',
+    titles: [
+      { ko: '2077: 마지막 신호', en: 'THE FINAL SIGNAL' },
+      { ko: '에코 프로토콜', en: 'ECHO PROTOCOL' },
+      { ko: '은하의 끝', en: 'EDGE OF GALAXY' },
+      { ko: '싱귤래리티', en: 'SINGULARITY' },
+      { ko: '네온 디바이드', en: 'NEON DIVIDE' },
+    ],
+  },
+  {
+    label: '로맨스',
+    prompt: 'romance, soft dreamy, blossoms',
+    expression: 'warm tender',
+    titles: [
+      { ko: '그 해, 우리의 봄', en: 'OUR SPRING' },
+      { ko: '너의 계절', en: 'YOUR SEASON' },
+      { ko: '마지막 편지', en: 'THE LAST LETTER' },
+      { ko: '다시, 봄', en: 'SPRING AGAIN' },
+      { ko: '오월의 밤', en: 'NIGHT IN MAY' },
+    ],
+  },
+  {
+    label: '공포',
+    prompt: 'horror, fog, dark',
+    expression: 'fearful uneasy',
+    titles: [
+      { ko: '새벽 세 시', en: '3 A.M.' },
+      { ko: '검은 방', en: 'THE DARK ROOM' },
+      { ko: '속삭임', en: 'WHISPERS' },
+      { ko: '문 뒤에', en: 'BEHIND THE DOOR' },
+      { ko: '저주받은 밤', en: 'CURSED NIGHT' },
+    ],
+  },
+  {
+    label: '코미디',
+    prompt: 'comedy, bright playful',
+    expression: 'playful grin',
+    titles: [
+      { ko: '대환장 패밀리', en: 'CRAZY FAMILY' },
+      { ko: '오늘도 폭망', en: 'ANOTHER BAD DAY' },
+      { ko: '웃픈 인생', en: 'LAUGH OR CRY' },
+      { ko: '사고뭉치들', en: 'THE TROUBLEMAKERS' },
+      { ko: '행복은 셀프', en: 'HAPPINESS DIY' },
+    ],
+  },
+  {
+    label: '느와르',
+    prompt: 'noir, rainy neon street',
+    expression: 'cold hard-boiled',
+    titles: [
+      { ko: '검은 도시', en: 'BLACK CITY' },
+      { ko: '배신의 밤', en: 'NIGHT OF BETRAYAL' },
+      { ko: '마지막 거래', en: 'THE LAST DEAL' },
+      { ko: '회색 지대', en: 'GRAY ZONE' },
+      { ko: '피의 계약', en: 'BLOOD PACT' },
+    ],
+  },
+  {
+    label: '판타지',
+    prompt: 'fantasy, mythic, magic glow',
+    expression: 'noble gaze',
+    titles: [
+      { ko: '천년의 검', en: 'SWORD OF MILLENNIUM' },
+      { ko: '잊혀진 왕국', en: 'THE LOST KINGDOM' },
+      { ko: '용의 후예', en: 'HEIR OF DRAGONS' },
+      { ko: '마법의 숲', en: 'ENCHANTED FOREST' },
+      { ko: '별의 예언', en: 'STARBORN PROPHECY' },
+    ],
+  },
+  {
+    label: '재난',
+    prompt: 'disaster, collapsing city, dust',
+    expression: 'desperate',
+    titles: [
+      { ko: '붕괴', en: 'COLLAPSE' },
+      { ko: '최후의 날', en: 'THE LAST DAY' },
+      { ko: '탈출', en: 'ESCAPE' },
+      { ko: '대지진', en: 'AFTERSHOCK' },
+      { ko: '생존자들', en: 'THE SURVIVORS' },
+    ],
+  },
 ];
 
-// CATEGORY 02 — 분위기 Mood (6)
-export const MOOD_OPTIONS = [
-  '웅장한',
-  '긴장감',
-  '감성적인',
-  '어두운',
-  '유쾌한',
-  '미스터리',
+export const POSTER_MOODS: PosterKeywordOption[] = [
+  { label: '웅장', prompt: 'epic' },
+  { label: '긴장', prompt: 'tense' },
+  { label: '감성', prompt: 'emotional' },
+  { label: '어두움', prompt: 'dark moody' },
+  { label: '유쾌', prompt: 'upbeat' },
+  { label: '미스터리', prompt: 'mysterious' },
+  { label: '비장', prompt: 'heroic solemn' },
+  { label: '몽환', prompt: 'dreamy surreal' },
 ];
 
-// CATEGORY 03 — 조명 Lighting (6)
-export const LIGHTING_OPTIONS = [
-  '역광 림라이트',
-  '골든아워',
-  '네온',
-  '하이키',
-  '로우키',
-  '화염 백라이트',
+export const POSTER_LIGHTING: PosterKeywordOption[] = [
+  { label: '림라이트', prompt: 'rim light' },
+  { label: '골든아워', prompt: 'golden hour' },
+  { label: '네온', prompt: 'neon glow' },
+  { label: '하이키', prompt: 'high-key bright' },
+  { label: '로우키', prompt: 'low-key shadow' },
+  { label: '화염', prompt: 'fiery backlight' },
+  { label: '블루아워', prompt: 'cold blue hour' },
+  { label: '스포트', prompt: 'dramatic spotlight' },
 ];
 
-// CATEGORY 04 — 구도 Composition (6)
-export const COMPOSITION_OPTIONS = [
-  '클로즈업',
-  '전신 히어로샷',
-  '로우앵글',
-  '분할 몽타주',
-  '실루엣',
-  '부감(오버헤드)',
+export const POSTER_COMPOSITIONS: PosterKeywordOption[] = [
+  { label: '클로즈업', prompt: 'close-up' },
+  { label: '전신', prompt: 'full-body hero' },
+  { label: '로우앵글', prompt: 'low-angle' },
+  { label: '몽타주', prompt: 'split montage' },
+  { label: '실루엣', prompt: 'silhouette' },
+  { label: '부감', prompt: 'overhead' },
+  { label: '대칭', prompt: 'symmetrical center' },
+  { label: '와이드', prompt: 'epic wide shot' },
 ];
 
-/** 인물수 상한(사진 첨부 가능 장수). 가이드 v2: 1~4명. */
+export const GENRE_OPTIONS = POSTER_GENRES.map((item) => item.label);
+export const MOOD_OPTIONS = POSTER_MOODS.map((item) => item.label);
+export const LIGHTING_OPTIONS = POSTER_LIGHTING.map((item) => item.label);
+export const COMPOSITION_OPTIONS = POSTER_COMPOSITIONS.map((item) => item.label);
+
+/** 인물수 상한(사진 첨부 가능 장수). 가이드 v3: 1~4장. */
 export const MAX_PEOPLE = 4;
 
-/**
- * 장르별 추천 제목 (가이드 v2).
- * 사용자가 제목을 비워두면 placeholder/기본값으로 사용합니다.
- */
-export const RECOMMENDED_TITLES: Record<string, string> = {
-  액션: '최후의 작전',
-  SF: '2077: 마지막 신호',
-  로맨스: '그 해, 우리의 봄',
-  공포: '새벽 세 시',
-  코미디: '대환장 패밀리',
-  '느와르/범죄': '검은 도시',
-  판타지: '천년의 검',
-  재난: '붕괴',
-};
+export const RECOMMENDED_TITLES: Record<string, string> = Object.fromEntries(
+  POSTER_GENRES.map((genre) => [genre.label, genre.titles[0]?.ko ?? '']),
+);
+
+export const RECOMMENDED_SUBTITLES: Record<string, string> = Object.fromEntries(
+  POSTER_GENRES.map((genre) => [genre.label, genre.titles[0]?.en ?? '']),
+);
+
+function getOptionPrompt(options: PosterKeywordOption[], label: string): string {
+  return options.find((item) => item.label === label)?.prompt ?? label;
+}
+
+export function getPosterTitlePair(
+  genreLabel: string,
+  rand: () => number = Math.random,
+): PosterTitlePair {
+  const genre = POSTER_GENRES.find((item) => item.label === genreLabel) ?? POSTER_GENRES[0];
+  const index = Math.floor(rand() * genre.titles.length);
+
+  return genre.titles[index] ?? genre.titles[0] ?? { ko: '무제', en: 'UNTITLED' };
+}
+
+export function buildPosterPrompt(input: BuildPosterPromptInput): string {
+  const genre = POSTER_GENRES.find((item) => item.label === input.genre) ?? POSTER_GENRES[0];
+  const mood = getOptionPrompt(POSTER_MOODS, input.mood);
+  const lighting = getOptionPrompt(POSTER_LIGHTING, input.lighting);
+  const composition = getOptionPrompt(POSTER_COMPOSITIONS, input.composition);
+  const title = (input.title || genre.titles[0]?.ko || '무제').trim();
+  const subtitle = (input.subtitle || genre.titles[0]?.en || '').trim();
+  const titleSegment = subtitle
+    ? `Korean title "${title}" / "${subtitle}"`
+    : `Korean title "${title}"`;
+
+  return [
+    'Hollywood blockbuster movie poster',
+    '2:3',
+    'faithful likeness of the attached photo(s)',
+    genre.prompt,
+    mood,
+    lighting,
+    composition,
+    `${genre.expression} facial expression`,
+    titleSegment,
+    'BIFAN laurel',
+    'epic cinematic key art.',
+  ].join(', ');
+}

@@ -583,6 +583,20 @@ body {
   font-weight: 600;
   color: #444;
 }
+.dropdown__label--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.poster-title-reroll {
+  border: none;
+  background: transparent;
+  color: var(--bifan-blue);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
 .dropdown__field {
   position: relative;
 }
