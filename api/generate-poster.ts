@@ -1,4 +1,4 @@
-import { buildPosterPrompt } from '../src/config/posterOptions';
+import { buildPosterPrompt } from './posterPrompt.js';
 
 /**
  * Vercel 서버리스 함수 — AI 영화 포스터 생성 (프롬프트 가이드 v3).
