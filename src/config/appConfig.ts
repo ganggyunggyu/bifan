@@ -3,8 +3,8 @@
  * Centralised here so they can be swapped without touching screen logic.
  */
 
-// TODO(#1): 실제 다운로드 용량 확정 후 교체. '[DATA_SIZE]' 자리.
-export const DOWNLOAD_SIZE_MB = 42;
+// Vercel HEAD 응답에서 일부 GLB Content-Length가 빠질 수 있어 실제 preload 총량을 fallback으로 보정.
+export const DOWNLOAD_SIZE_MB = 87;
 
 // Loading screen timing (Screen 1).
 export const LOGO_FADE_MS = 800;

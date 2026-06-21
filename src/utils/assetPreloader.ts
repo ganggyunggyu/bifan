@@ -1,5 +1,8 @@
 import { downloadWithProgress } from './assetDownloader';
 import { SKY_ANCHOR_PROP_MODELS } from '../config/arConfig';
+import { DOWNLOAD_SIZE_MB } from '../config/appConfig';
+
+const FALLBACK_TOTAL_BYTES = DOWNLOAD_SIZE_MB * 1024 * 1024;
 
 /**
  * 에셋 사전 다운로드 + 캐시.
@@ -41,7 +44,7 @@ export async function getTotalBytes(): Promise<number> {
       }
     }),
   );
-  return sizes.reduce((a, b) => a + b, 0);
+  return Math.max(sizes.reduce((a, b) => a + b, 0), FALLBACK_TOTAL_BYTES);
 }
 
 /**
@@ -52,7 +55,7 @@ export async function preloadAll(
   onProgress: (loadedBytes: number, totalBytes: number) => void,
   total?: number,
 ): Promise<void> {
-  const totalBytes = total ?? (await getTotalBytes());
+  const totalBytes = total ? Math.max(total, FALLBACK_TOTAL_BYTES) : await getTotalBytes();
   let base = 0;
   for (const url of PRELOAD_ASSETS) {
     if (cache.has(url)) {

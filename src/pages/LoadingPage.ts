@@ -7,7 +7,9 @@ import { appState } from '../store/appState';
 import { router, ROUTES } from '../utils/router';
 import { DOWNLOAD_SIZE_MB, MODAL_DELAY_MS } from '../config/appConfig';
 
-const toMB = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(0);
+const BYTES_PER_MB = 1024 * 1024;
+const FALLBACK_TOTAL_BYTES = DOWNLOAD_SIZE_MB * BYTES_PER_MB;
+const toMB = (bytes: number): string => (bytes / BYTES_PER_MB).toFixed(0);
 
 /**
  * [Screen 1] 로딩 페이지 + 데이터 다운로드 모달
@@ -40,7 +42,7 @@ export class LoadingPage implements Page {
   }
 
   private showDownloadModal(): void {
-    const sizeMB = this.totalBytes ? toMB(this.totalBytes) : `${DOWNLOAD_SIZE_MB}`;
+    const sizeMB = toMB(Math.max(this.totalBytes, FALLBACK_TOTAL_BYTES));
     this.modal = new Modal({
       body: '콘텐츠 실행을 위해 데이터 다운로드가 필요합니다.',
       detail: `필요 데이터 ${sizeMB}MB`,
@@ -94,7 +96,7 @@ export class LoadingPage implements Page {
 
     // 실제 바이트 기준 진행률 표시(MB).
     const update = (loadedBytes: number, totalBytes: number) => {
-      const total = totalBytes || loadedBytes || 1;
+      const total = Math.max(totalBytes, loadedBytes, FALLBACK_TOTAL_BYTES, 1);
       label.textContent = `데이터 다운로드 중... (${toMB(loadedBytes)}MB / ${toMB(total)}MB)`;
       bar.setProgress(loadedBytes / total);
       appState.set({ downloadProgress: loadedBytes / total });
