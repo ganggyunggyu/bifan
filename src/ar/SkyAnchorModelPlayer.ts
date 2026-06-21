@@ -1,4 +1,5 @@
 import {
+  AnimationClip,
   AnimationMixer,
   Box3,
   Color,
@@ -28,6 +29,9 @@ interface ModelItem {
   importedScene: Group;
   actions: AnimationAction[];
   slot: Vector3;
+  slotRotation: Vector3;
+  entryOffset: Vector3;
+  floatPhase: number;
   delay: number;
   started: boolean;
 }
@@ -45,29 +49,72 @@ export interface SkyAnchorModelDebugState {
   loadedCount: number;
 }
 
-const BATCH_MODEL_SLOTS = [
-  new Vector3(-0.36, 0.02, 0),
-  new Vector3(0, 0.02, 0),
-  new Vector3(0.36, 0.02, 0),
-];
-const TWO_MODEL_BATCH_SLOTS = [
-  new Vector3(-0.18, 0.02, 0),
-  new Vector3(0.18, 0.02, 0),
-];
-const MAX_SLOT_DRIFT_X = 0.08;
-const MAX_SLOT_DRIFT_Y = 0.08;
+interface SlotPose {
+  position: Vector3;
+  rotation: Vector3;
+}
 
-function getBatchSlot(index: number): Vector3 {
+const THREE_MODEL_BATCH_FORMATIONS: SlotPose[][] = [
+  [
+    { position: new Vector3(-0.58, 0.12, 0.04), rotation: new Vector3(0.02, 0.22, -0.08) },
+    { position: new Vector3(0, -0.06, -0.02), rotation: new Vector3(0, 0, 0) },
+    { position: new Vector3(0.58, 0.1, 0.04), rotation: new Vector3(0.02, -0.22, 0.08) },
+  ],
+  [
+    { position: new Vector3(-0.52, -0.08, 0.03), rotation: new Vector3(-0.01, 0.18, -0.04) },
+    { position: new Vector3(0, 0.16, -0.03), rotation: new Vector3(0.02, 0, 0) },
+    { position: new Vector3(0.52, -0.08, 0.03), rotation: new Vector3(-0.01, -0.18, 0.04) },
+  ],
+  [
+    { position: new Vector3(-0.62, 0.04, 0.05), rotation: new Vector3(0.02, 0.24, -0.1) },
+    { position: new Vector3(0.02, -0.12, -0.03), rotation: new Vector3(-0.01, 0, 0.02) },
+    { position: new Vector3(0.62, 0.14, 0.05), rotation: new Vector3(0.02, -0.24, 0.1) },
+  ],
+];
+
+const TWO_MODEL_BATCH_FORMATIONS: SlotPose[][] = [
+  [
+    { position: new Vector3(-0.38, 0.08, 0.03), rotation: new Vector3(0.02, 0.18, -0.06) },
+    { position: new Vector3(0.38, -0.06, 0.02), rotation: new Vector3(-0.01, -0.18, 0.06) },
+  ],
+  [
+    { position: new Vector3(-0.34, -0.06, 0.02), rotation: new Vector3(-0.01, 0.16, -0.04) },
+    { position: new Vector3(0.34, 0.1, 0.03), rotation: new Vector3(0.02, -0.16, 0.04) },
+  ],
+];
+const SINGLE_MODEL_SLOT: SlotPose = {
+  position: new Vector3(0, 0.04, 0),
+  rotation: new Vector3(0, 0, 0),
+};
+const SLOT_REVEAL_STAGGER_SECONDS = 0.12;
+const MODEL_PRESENTATION_SCALE = 1.35;
+const MAX_SLOT_DRIFT_X = 0.12;
+const MAX_SLOT_DRIFT_Y = 0.1;
+const MODEL_TINT_COLORS = ['#f7fbff', '#7fe5ff', '#ffd95c', '#ff73cf'];
+
+function getBatchPose(index: number): SlotPose {
   const batchStart = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE) * SKY_ANCHOR_MODEL_BATCH_SIZE;
   const batchCount = Math.min(
     SKY_ANCHOR_MODEL_BATCH_SIZE,
     SKY_ANCHOR_PROP_MODELS.length - batchStart,
   );
+  const batchIndex = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE);
   const slotIndex = index - batchStart;
 
-  if (batchCount === 1) return BATCH_MODEL_SLOTS[1];
-  if (batchCount === 2) return TWO_MODEL_BATCH_SLOTS[slotIndex] ?? TWO_MODEL_BATCH_SLOTS[0];
-  return BATCH_MODEL_SLOTS[slotIndex] ?? BATCH_MODEL_SLOTS[1];
+  if (batchCount === 1) return SINGLE_MODEL_SLOT;
+  if (batchCount === 2) {
+    const formation = TWO_MODEL_BATCH_FORMATIONS[batchIndex % TWO_MODEL_BATCH_FORMATIONS.length];
+    return formation?.[slotIndex] ?? SINGLE_MODEL_SLOT;
+  }
+
+  const formation = THREE_MODEL_BATCH_FORMATIONS[batchIndex % THREE_MODEL_BATCH_FORMATIONS.length];
+  return formation?.[slotIndex] ?? SINGLE_MODEL_SLOT;
+}
+
+function getEntryOffset(slot: Vector3): Vector3 {
+  if (slot.x < -0.05) return new Vector3(-0.18, -0.06, 0.04);
+  if (slot.x > 0.05) return new Vector3(0.18, -0.06, 0.04);
+  return new Vector3(0, -0.14, 0.05);
 }
 
 function createLoader(): { loader: GLTFLoader; dispose: () => void } {
@@ -84,7 +131,9 @@ function createLoader(): { loader: GLTFLoader; dispose: () => void } {
   };
 }
 
-function brightenModelMaterials(root: Group): void {
+function brightenModelMaterials(root: Group, modelIndex: number): void {
+  const tint = new Color(MODEL_TINT_COLORS[modelIndex % MODEL_TINT_COLORS.length]);
+
   root.traverse((child) => {
     if (!(child instanceof Mesh)) return;
 
@@ -94,19 +143,16 @@ function brightenModelMaterials(root: Group): void {
     const converted = materials.map((material) => {
       const source = material as typeof material & {
         color?: Color;
-        map?: MeshBasicMaterial['map'];
       };
-      const map = source.map ?? null;
-      const color = map
-        ? new Color('#ffffff')
-        : (source.color?.clone().multiplyScalar(1.25) ?? new Color('#ffffff'));
+      const color = source.color
+        ? source.color.clone().lerp(tint, 0.72).multiplyScalar(1.25)
+        : tint.clone();
 
       return new MeshBasicMaterial({
         name: material.name,
         color,
-        map,
         side: DoubleSide,
-        transparent: false,
+        transparent: true,
         opacity: 1,
         depthTest: false,
         depthWrite: false,
@@ -118,6 +164,12 @@ function brightenModelMaterials(root: Group): void {
   });
 }
 
+function createCenteredAnimationClip(sourceClip: ThreeAnimationClip): ThreeAnimationClip | null {
+  const tracks = sourceClip.tracks.filter((track) => !track.name.endsWith('.position'));
+  if (!tracks.length) return null;
+  return new AnimationClip(`${sourceClip.name || 'clip'}-centered`, sourceClip.duration, tracks);
+}
+
 function fitModelToBounds(
   root: Group,
   descriptor: SkyAnchorPropModel,
@@ -125,7 +177,9 @@ function fitModelToBounds(
 ): ModelItem {
   const wrapper = new Group();
   const pivot = new Group();
-  const slot = getBatchSlot(index).clone();
+  const pose = getBatchPose(index);
+  const slot = pose.position.clone();
+  const slotRotation = pose.rotation.clone();
   const box = new Box3().setFromObject(root);
   const size = new Vector3();
   const center = new Vector3();
@@ -138,12 +192,12 @@ function fitModelToBounds(
   const maxAxis = Math.max(size.x, size.y, size.z, 0.001);
   wrapper.name = `bifan-animated-model-${index}`;
   wrapper.position.copy(slot);
-  wrapper.rotation.set(0, 0, 0);
-  wrapper.scale.setScalar(descriptor.size / maxAxis);
+  wrapper.rotation.set(slotRotation.x, slotRotation.y, slotRotation.z);
+  wrapper.scale.setScalar((descriptor.size * MODEL_PRESENTATION_SCALE) / maxAxis);
   wrapper.visible = false;
   wrapper.add(pivot);
 
-  brightenModelMaterials(root);
+  brightenModelMaterials(root, index);
 
   return {
     wrapper,
@@ -151,7 +205,10 @@ function fitModelToBounds(
     importedScene: root,
     actions: [],
     slot,
-    delay: descriptor.delay ?? 0,
+    slotRotation,
+    entryOffset: getEntryOffset(slot),
+    floatPhase: index * 0.73,
+    delay: descriptor.delay ?? ((index % SKY_ANCHOR_MODEL_BATCH_SIZE) * SLOT_REVEAL_STAGGER_SECONDS),
     started: false,
   };
 }
@@ -164,13 +221,10 @@ function fitModelToAnimationBounds(
   const bounds = new Box3();
   const sampleBox = new Box3();
   const fitSize = new Vector3();
-  const sampleCenter = new Vector3();
-  const sampleSize = new Vector3();
-  const anchorCenter = new Vector3();
+  const pathCenter = new Vector3();
   const sampleMixer = new AnimationMixer(item.importedScene);
   const sampleAction = sampleMixer.clipAction(clip);
   const sampleCount = Math.max(12, Math.ceil(clip.duration * 10));
-  let anchorAxis = 0;
 
   item.wrapper.scale.setScalar(1);
   sampleAction.reset();
@@ -183,13 +237,6 @@ function fitModelToAnimationBounds(
 
     if (!sampleBox.isEmpty()) {
       bounds.union(sampleBox);
-      sampleBox.getSize(sampleSize);
-      const sampleAxis = Math.max(sampleSize.x, sampleSize.y, sampleSize.z);
-      if (sampleAxis > anchorAxis) {
-        sampleBox.getCenter(sampleCenter);
-        anchorCenter.copy(sampleCenter).sub(item.wrapper.position);
-        anchorAxis = sampleAxis;
-      }
     }
   }
 
@@ -201,11 +248,11 @@ function fitModelToAnimationBounds(
   if (bounds.isEmpty()) return;
 
   bounds.getSize(fitSize);
-  item.pivot.position.sub(anchorCenter);
-  const scaleAxis = anchorAxis > 0
-    ? anchorAxis
-    : Math.max(fitSize.x, fitSize.y, fitSize.z, 0.001);
-  item.wrapper.scale.setScalar(descriptor.size / scaleAxis);
+  bounds.getCenter(pathCenter);
+  item.pivot.position.sub(pathCenter.sub(item.wrapper.position));
+  item.wrapper.scale.setScalar(
+    (descriptor.size * MODEL_PRESENTATION_SCALE) / Math.max(fitSize.x, fitSize.y, fitSize.z, 0.001),
+  );
   item.wrapper.updateMatrixWorld(true);
 }
 
@@ -213,6 +260,7 @@ function resetItem(item: ModelItem): void {
   item.started = false;
   item.wrapper.visible = false;
   item.wrapper.position.copy(item.slot);
+  item.wrapper.rotation.set(item.slotRotation.x, item.slotRotation.y, item.slotRotation.z);
   item.actions.forEach((action) => {
     action.stop();
     action.reset();
@@ -329,6 +377,7 @@ export class SkyAnchorModelPlayer {
       });
     });
     this.mixers.forEach((mixer) => mixer.update(deltaSeconds));
+    this.applyPresentationMotion(batchElapsed);
     this.constrainVisibleItemsToSlots();
   }
 
@@ -347,7 +396,7 @@ export class SkyAnchorModelPlayer {
 
     this.items.forEach((item) => {
       if (!item.wrapper.visible) return;
-      itemBounds.setFromObject(item.wrapper);
+      itemBounds.setFromObject(item.pivot);
       if (!itemBounds.isEmpty()) bounds.union(itemBounds);
     });
 
@@ -379,22 +428,50 @@ export class SkyAnchorModelPlayer {
   private registerAnimations(item: ModelItem, gltf: GLTF, descriptor: SkyAnchorPropModel): void {
     const sourceClip = gltf.animations.find((candidate) => candidate.tracks.length > 0);
     if (!sourceClip) return;
+    const presentationClip = createCenteredAnimationClip(sourceClip);
+    if (!presentationClip) return;
 
-    fitModelToAnimationBounds(item, sourceClip, descriptor);
+    fitModelToAnimationBounds(item, presentationClip, descriptor);
 
     const mixer = new AnimationMixer(item.importedScene);
-    const action = mixer.clipAction(sourceClip);
+    const action = mixer.clipAction(presentationClip);
     action.setLoop(LoopOnce, 1);
     action.enabled = true;
     action.paused = true;
     action.clampWhenFinished = true;
     action.timeScale = Math.max(
       1,
-      sourceClip.duration / Math.max(SKY_ANCHOR_MODEL_BATCH_HOLD_MS / 1000 - item.delay - 0.25, 0.5),
+      presentationClip.duration / Math.max(SKY_ANCHOR_MODEL_BATCH_HOLD_MS / 1000 - item.delay - 0.25, 0.5),
     );
     item.actions.push(action);
     this.mixers.push(mixer);
     this.mixerRoots.push(item.importedScene);
+  }
+
+  private applyPresentationMotion(batchElapsed: number): void {
+    this.items.forEach((item) => {
+      if (!item.wrapper.visible || !item.started) return;
+
+      const localElapsed = Math.max(0, batchElapsed - item.delay);
+      const intro = Math.min(localElapsed / 0.45, 1);
+      const easeOut = 1 - Math.pow(1 - intro, 3);
+      const hover = Math.sin((localElapsed + item.floatPhase) * 2.6) * 0.012;
+      const settleX = item.entryOffset.x * (1 - easeOut);
+      const settleY = item.entryOffset.y * (1 - easeOut) + hover;
+      const settleZ = item.entryOffset.z * (1 - easeOut);
+      const tilt = Math.sin((localElapsed + item.floatPhase) * 1.8) * 0.018;
+
+      item.wrapper.position.set(
+        item.slot.x + settleX,
+        item.slot.y + settleY,
+        item.slot.z + settleZ,
+      );
+      item.wrapper.rotation.set(
+        item.slotRotation.x,
+        item.slotRotation.y,
+        item.slotRotation.z + tilt,
+      );
+    });
   }
 
   private constrainVisibleItemsToSlots(): void {
@@ -405,7 +482,7 @@ export class SkyAnchorModelPlayer {
     this.items.forEach((item) => {
       if (!item.wrapper.visible) return;
 
-      bounds.setFromObject(item.wrapper);
+      bounds.setFromObject(item.pivot);
       if (bounds.isEmpty()) return;
 
       bounds.getCenter(center);
