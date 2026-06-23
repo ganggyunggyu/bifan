@@ -11,7 +11,10 @@
     "dev:https": "npm run sync:xr && BIFAN_HTTPS=1 vite --host 0.0.0.0 --port 5181",
     "tunnel": "cloudflared tunnel --url https://localhost:5181 --no-tls-verify",
     "build": "npm run sync:xr && tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm run test:unit && npm run test:ui",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@8thwall/engine-binary": "^1.0.0",
