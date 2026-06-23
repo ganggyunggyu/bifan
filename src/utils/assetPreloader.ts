@@ -1,5 +1,5 @@
 import { downloadWithProgress } from './assetDownloader';
-import { SKY_ANCHOR_PROP_MODELS } from '../config/arConfig';
+import { CHAMELEON_AUDIO, SKY_ANCHOR_PROP_MODELS } from '../config/arConfig';
 import { DOWNLOAD_SIZE_MB } from '../config/appConfig';
 
 const FALLBACK_TOTAL_BYTES = DOWNLOAD_SIZE_MB * 1024 * 1024;
@@ -7,12 +7,12 @@ const FALLBACK_TOTAL_BYTES = DOWNLOAD_SIZE_MB * 1024 * 1024;
 /**
  * 에셋 사전 다운로드 + 캐시.
  *
- * 와이파이가 느리면 영상(mp4)이 재생 중간에 끊기므로, 시작 화면에서 실제 에셋을
+ * 와이파이가 느리면 프랍/오디오가 끊기므로, 시작 화면에서 실제 에셋을
  * 전부 받아 Blob으로 캐시하고, 재생 시 네트워크 대신 메모리(blob URL)에서 읽습니다.
  * 진행률은 실제 바이트 기준(MB)으로 표시합니다.
  */
 export const PRELOAD_ASSETS: string[] = [
-  '/assets/video/module-a.mp4', // 핵심: 끊김 유발하는 큰 영상
+  CHAMELEON_AUDIO,
   ...SKY_ANCHOR_PROP_MODELS.map((model) => model.url),
   '/assets/guide/step1.png',
   '/assets/guide/step2.png',
@@ -22,6 +22,32 @@ export const PRELOAD_ASSETS: string[] = [
 
 // 원본 URL -> objectURL(blob)
 const cache = new Map<string, string>();
+const cacheSizes = new Map<string, number>();
+const sizeHints = new Map<string, number>();
+
+export interface PreloadFailure {
+  url: string;
+  error: unknown;
+}
+
+export interface PreloadResult {
+  assetCount: number;
+  failed: PreloadFailure[];
+  loadedBytes: number;
+  totalBytes: number;
+}
+
+export class AssetPreloadError extends Error {
+  readonly failures: PreloadFailure[];
+  readonly result: PreloadResult;
+
+  constructor(result: PreloadResult) {
+    super(`asset preload failed: ${result.failed.length}/${result.assetCount}`);
+    this.name = 'AssetPreloadError';
+    this.failures = result.failed;
+    this.result = result;
+  }
+}
 
 /** 캐시된(다운로드된) blob URL이 있으면 반환, 없으면 원본 URL. */
 export function cachedUrl(url: string): string {
@@ -38,7 +64,9 @@ export async function getTotalBytes(): Promise<number> {
     PRELOAD_ASSETS.map(async (u) => {
       try {
         const r = await fetch(u, { method: 'HEAD' });
-        return Number(r.headers.get('Content-Length') || 0);
+        const size = Number(r.headers.get('Content-Length') || 0);
+        if (size > 0) sizeHints.set(u, size);
+        return size;
       } catch {
         return 0;
       }
@@ -54,25 +82,47 @@ export async function getTotalBytes(): Promise<number> {
 export async function preloadAll(
   onProgress: (loadedBytes: number, totalBytes: number) => void,
   total?: number,
-): Promise<void> {
+): Promise<PreloadResult> {
   const totalBytes = total ? Math.max(total, FALLBACK_TOTAL_BYTES) : await getTotalBytes();
   let base = 0;
+  const failed: PreloadFailure[] = [];
+
   for (const url of PRELOAD_ASSETS) {
     if (cache.has(url)) {
+      base += cacheSizes.get(url) ?? sizeHints.get(url) ?? 0;
       onProgress(base, totalBytes);
       continue;
     }
+
     try {
       const blob = await downloadWithProgress(url, (l) =>
         onProgress(base + l, totalBytes),
       );
+      if (blob.size <= 0) {
+        throw new Error(`empty asset: ${url}`);
+      }
       cache.set(url, URL.createObjectURL(blob));
+      cacheSizes.set(url, blob.size);
       base += blob.size;
       onProgress(base, totalBytes);
     } catch (err) {
       console.warn('[assetPreloader] failed:', url, err);
+      failed.push({ url, error: err });
     }
   }
+
+  const result: PreloadResult = {
+    assetCount: PRELOAD_ASSETS.length,
+    failed,
+    loadedBytes: base,
+    totalBytes,
+  };
+
+  if (failed.length > 0) {
+    throw new AssetPreloadError(result);
+  }
+
   // 완료 시 100%로 정렬.
   onProgress(totalBytes || base, totalBytes || base);
+  return result;
 }

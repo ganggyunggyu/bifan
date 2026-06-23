@@ -32,7 +32,7 @@ export class DataLoadingPage implements Page {
     const ready = isPreloaded() ? Promise.resolve() : preloadAll(() => undefined);
     const minDelay = new Promise((r) => setTimeout(r, 800));
     void Promise.all([ready, minDelay]).then(() => {
-      if (!this.cancelled) router.navigate(ROUTES.arCamera);
+      if (!this.cancelled) router.navigate(ROUTES.arAnimation);
     });
   }
 

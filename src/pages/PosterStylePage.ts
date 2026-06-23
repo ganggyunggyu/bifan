@@ -40,12 +40,17 @@ export class PosterStylePage implements Page {
     const content = document.createElement('div');
     content.className = 'poster-style__content';
 
-    // 사진 미리보기(첫 장) + 인물수 안내.
-    const preview = document.createElement('img');
-    preview.className = 'poster-style__preview';
-    preview.alt = '선택한 사진';
-    fileToDataUrl(photos[0]).then((url) => (preview.src = url));
-    content.appendChild(preview);
+    // 사진 미리보기(전체) + 인물수 안내.
+    const previews = document.createElement('div');
+    previews.className = 'poster-style__previews';
+    photos.forEach((photo, i) => {
+      const preview = document.createElement('img');
+      preview.className = 'poster-style__preview';
+      preview.alt = `선택한 사진 ${i + 1}`;
+      fileToDataUrl(photo).then((url) => (preview.src = url));
+      previews.appendChild(preview);
+    });
+    content.appendChild(previews);
 
     const peopleInfo = document.createElement('p');
     peopleInfo.className = 'poster-style__people';

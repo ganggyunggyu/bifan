@@ -46,11 +46,15 @@ export class PosterLoadingPage implements Page {
   ): Promise<void> {
     try {
       // 원본이 크면 본문 한도를 넘기므로 각 사진을 축소+JPEG 압축 후 전송.
-      const images = await Promise.all(photos.map((p) => compressImage(p)));
+      const images = await Promise.all(photos.map((p) => compressImage(p, 768, 0.76)));
       const req = buildPromptRequest(images, appState.get());
       const res = await generatePoster(req);
       if (this.cancelled) return;
-      appState.set({ generatedPosterUrl: res.imageUrl });
+      appState.set({
+        generatedPosterUrl: res.imageUrl,
+        generatedPosterSource: res.source,
+        generatedPosterInputCount: res.inputImages,
+      });
       router.navigate(ROUTES.posterResult);
     } catch (err) {
       if (this.cancelled) return;

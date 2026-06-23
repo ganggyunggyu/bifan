@@ -20,7 +20,7 @@ export interface AppState {
   targetFoundDuration: number;
 
   // 포스터 제작 (Phase 2/3에서 사용)
-  capturedPhotos: File[]; // 인물 사진 1~4장(인물수 = 길이)
+  capturedPhotos: File[]; // 인물 사진 1장
   selectedGenre: string;
   selectedMood: string;
   selectedLighting: string;
@@ -28,6 +28,8 @@ export interface AppState {
   movieTitle: string;
   movieSubtitle: string;
   generatedPosterUrl: string | null;
+  generatedPosterSource: 'openai' | 'placeholder' | null;
+  generatedPosterInputCount: number;
 
   // 전시 (Phase 3)
   exhibitSlots: ExhibitSlot[];
@@ -47,6 +49,8 @@ const initialState: AppState = {
   movieTitle: '',
   movieSubtitle: '',
   generatedPosterUrl: null,
+  generatedPosterSource: null,
+  generatedPosterInputCount: 0,
   exhibitSlots: [],
   myPosterSlotId: null,
 };

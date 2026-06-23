@@ -15,28 +15,25 @@ export interface PropObject {
 // TODO(#4, #5): 실제 GLB 파일/오브젝트 목록으로 교체.
 export const PROP_OBJECTS: PropObject[] = [
   { key: 'prop_01', label: '프랍 1', appearDelayMs: 0 },
-  { key: 'prop_02', label: '프랍 2', appearDelayMs: 300 },
-  { key: 'prop_03', label: '프랍 3', appearDelayMs: 600 },
-  { key: 'prop_04', label: '프랍 4', appearDelayMs: 900 },
-  { key: 'prop_05', label: '프랍 5', appearDelayMs: 1200 },
-  { key: 'prop_06', label: '프랍 6', appearDelayMs: 1500 },
-  { key: 'prop_07', label: '프랍 7', appearDelayMs: 1800 },
-  { key: 'prop_08', label: '프랍 8', appearDelayMs: 2100 },
-  { key: 'chameleon', label: '카멜레온 캐릭터', appearDelayMs: 2600 },
+  { key: 'prop_02', label: '프랍 2', appearDelayMs: 2000 },
+  { key: 'prop_03', label: '프랍 3', appearDelayMs: 4000 },
+  { key: 'prop_04', label: '프랍 4', appearDelayMs: 6000 },
+  { key: 'prop_05', label: '프랍 5', appearDelayMs: 8000 },
+  { key: 'prop_06', label: '프랍 6', appearDelayMs: 10000 },
+  { key: 'prop_07', label: '프랍 7', appearDelayMs: 12000 },
+  { key: 'prop_08', label: '프랍 8', appearDelayMs: 14000 },
+  { key: 'chameleon', label: '카멜레온 캐릭터', appearDelayMs: 16000 },
 ];
 
-/**
- * Module A 프랍 애니메이션은 사전 렌더링된 mp4 영상으로 전달됨 (GLB 아님).
- * 8th Wall + Three.js VideoTexture로 인식된 구조물 위치에 앵커링하여 재생.
- */
+/** Legacy 영상 경로. 현재 Screen 6은 이 mp4를 재생하지 않고 카멜레온/프랍을 바로 표시합니다. */
 export const MODULE_A_VIDEO = '/assets/video/module-a.mp4';
+export const CHAMELEON_AUDIO = '/assets/audio/cameleon_C05_v01.mp3';
 
 // 실제 에셋 기준 재생시간(22초). onended로도 종료를 감지하지만 폴백 타임아웃에 사용.
 export const ANIMATION_TOTAL_MS = 22000;
 
 /**
- * 영상 플레인 종횡비 (1280x720 = 16:9).
- * AR 앵커 시 플레인 가로 폭(월드 단위)에 곱해 세로를 계산.
+ * Legacy 영상 플레인 종횡비 (1280x720 = 16:9).
  */
 export const ANIMATION_ASPECT = 16 / 9;
 
@@ -44,27 +41,42 @@ export interface SkyAnchorPropModel {
   url: string;
   size: number;
   delay?: number;
+  label?: string;
+  persistent?: boolean;
+  kind?: 'gltf' | 'sprite' | 'png-sequence';
+  sprite?: {
+    columns: number;
+    rows: number;
+    frameCount: number;
+    fps: number;
+    aspect: number;
+  };
 }
 
 /**
- * Module A 영상 종료 뒤 노출할 sky-anchor 프랍 GLB.
- * sky-anchor-webar의 모델 자산/로딩 방식을 가져오되, Screen 6 본편 영상은 유지합니다.
+ * Module A에서 바로 노출할 sky-anchor 프랍/카멜레온 자산.
+ * Drive 폴더의 카멜레온 스프라이트/오디오와 sky-anchor-webar의 모델 자산을 함께 사용합니다.
  */
 export const SKY_ANCHOR_PROP_MODELS: SkyAnchorPropModel[] = [
   {
-    url: '/assets/models/sky-anchor/Iron_man_ani_v04.glb',
-    size: 0.624,
-  },
-  {
-    url: '/assets/models/sky-anchor/harrypotter_ani_v08.glb',
-    size: 0.39,
+    url: '/assets/sprites/chameleon/cameleon_c05_v01_atlas.png',
+    label: '카멜레온 C05',
+    kind: 'png-sequence',
+    size: 0.62,
+    sprite: {
+      columns: 15,
+      rows: 14,
+      frameCount: 197,
+      fps: 24,
+      aspect: 256 / 144,
+    },
   },
   {
     url: '/assets/models/sky-anchor/Megaphone_Ani_v02.glb',
     size: 0.546,
   },
   {
-    url: '/assets/models/sky-anchor/Slate_Ani_v02.glb',
+    url: '/assets/models/sky-anchor/Slate_Ani_v03.glb',
     size: 0.52,
   },
   {
@@ -76,12 +88,16 @@ export const SKY_ANCHOR_PROP_MODELS: SkyAnchorPropModel[] = [
     size: 0.52,
   },
   {
+    url: '/assets/models/sky-anchor/harrypotter_ani_v08.glb',
+    size: 0.46,
+  },
+  {
     url: '/assets/models/sky-anchor/r2d2_ani.glb',
     size: 0.52,
   },
   {
     url: '/assets/models/sky-anchor/movie_ticket_ani.glb',
-    size: 0.52,
+    size: 0.72,
   },
   {
     url: '/assets/models/sky-anchor/gama_ani.glb',
@@ -89,39 +105,56 @@ export const SKY_ANCHOR_PROP_MODELS: SkyAnchorPropModel[] = [
   },
   {
     url: '/assets/models/sky-anchor/man_in_black_medicine_ani.glb',
-    size: 0.52,
+    size: 0.68,
   },
   {
     url: '/assets/models/sky-anchor/record_mic_glb_0616_V01.glb',
-    size: 0.52,
+    size: 0.72,
   },
   {
     url: '/assets/models/sky-anchor/pan_0616_glb_V02.glb',
     size: 0.52,
   },
   {
-    url: '/assets/models/sky-anchor/woodbox_0616_glb_v01.glb',
-    size: 0.52,
-  },
-  {
-    url: '/assets/models/sky-anchor/movie_reel_0616_glb_V02.glb',
-    size: 0.52,
-  },
-  {
-    url: '/assets/models/sky-anchor/texi_0616_V07.glb',
-    size: 0.52,
-  },
-  {
     url: '/assets/models/sky-anchor/handphone_glb.glb',
     size: 0.52,
   },
+  {
+    url: '/assets/models/sky-anchor/woodbox_0616_glb_v01.glb',
+    size: 0.64,
+  },
+  {
+    url: '/assets/models/sky-anchor/movie_reel_0616_glb_V02.glb',
+    size: 0.62,
+  },
+  {
+    url: '/assets/models/sky-anchor/texi_0616_V07.glb',
+    size: 0.68,
+  },
+  {
+    url: '/assets/models/sky-anchor/Iron_man_ani_v04_optimized_nodraco.glb',
+    size: 0.624,
+  },
 ];
 
-export const SKY_ANCHOR_MODEL_BATCH_SIZE = 3;
-export const SKY_ANCHOR_MODEL_BATCH_HOLD_MS = 4800;
+export const SKY_ANCHOR_MODEL_ENTRY_STAGGER_MS = 2000;
+export const SKY_ANCHOR_MODEL_VISIBLE_MS = 5000;
+export const SKY_ANCHOR_MODEL_FADE_OUT_MS = 900;
+export const SKY_ANCHOR_INTRO_SEQUENCE_MS = Math.ceil(
+  SKY_ANCHOR_PROP_MODELS.reduce((duration, model, index) => {
+    if (index !== 0 || model.kind !== 'png-sequence' || !model.sprite) return duration;
+    return Math.max(duration, (model.sprite.frameCount / Math.max(model.sprite.fps, 1)) * 1000);
+  }, 0),
+);
+const SKY_ANCHOR_SEQUENCE_MODEL_COUNT = SKY_ANCHOR_PROP_MODELS.filter(
+  (model, index) => !model.persistent && !(index === 0 && model.kind === 'png-sequence'),
+).length;
 export const POST_VIDEO_PROPS_HOLD_MS =
-  Math.ceil(SKY_ANCHOR_PROP_MODELS.length / SKY_ANCHOR_MODEL_BATCH_SIZE) *
-  SKY_ANCHOR_MODEL_BATCH_HOLD_MS;
+  SKY_ANCHOR_INTRO_SEQUENCE_MS +
+  Math.max(0, SKY_ANCHOR_SEQUENCE_MODEL_COUNT - 1) *
+    SKY_ANCHOR_MODEL_ENTRY_STAGGER_MS +
+  SKY_ANCHOR_MODEL_VISIBLE_MS +
+  400;
 
 // (구) GLB 경로 — 영상 방식으로 대체됨. 추후 하이브리드 시 참고용으로 보존.
 export const PROP_SCENE_GLB = '/assets/models/ar-scene.glb';
@@ -155,7 +188,6 @@ export const STRUCTURE_TARGET = {
 
 /**
  * 8th Wall 이미지 타겟 인식 사용 여부.
- * 타겟 이미지/실기기 준비 전까지는 false → 기존 mock(시뮬레이션 버튼) 플로우로 동작.
- * 준비되면 true 로 켜면 실제 구조물 인식 + 벽면 앵커 영상으로 전환됩니다.
+ * Module A는 실제 AR 경로만 사용합니다. mock/fallback 카메라 경로는 제거했습니다.
  */
-export const ENABLE_IMAGE_TARGET = false;
+export const ENABLE_IMAGE_TARGET = true;

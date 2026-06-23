@@ -146,16 +146,73 @@ export function buildPosterPrompt(input) {
     : `Korean title "${title}"`;
 
   return [
-    'Hollywood blockbuster movie poster',
-    '2:3',
-    'faithful likeness of the attached photo(s)',
+    'Vertical 2:3 Korean film festival poster',
+    'Use the uploaded image only as a loose reference for framing, color, and wardrobe mood',
+    'Create one fictional adult central character only',
+    'Do not identify, copy, or preserve exact face or biometric likeness from the uploaded image',
+    'No extra characters, background people, reflections, or duplicate faces',
+    'Keep the fictional character centered and prominent',
     genre.prompt,
     mood,
     lighting,
     composition,
-    `${genre.expression} facial expression`,
+    `${genre.expression} mood`,
     titleSegment,
     'BIFAN laurel',
     'epic cinematic key art.',
+  ].join(', ');
+}
+
+export function buildSafePosterPrompt(input) {
+  const genre = POSTER_GENRES.find((item) => item.label === input.genre) ?? POSTER_GENRES[0];
+  const mood = getOptionPrompt(POSTER_MOODS, input.mood);
+  const lighting = getOptionPrompt(POSTER_LIGHTING, input.lighting);
+  const composition = getOptionPrompt(POSTER_COMPOSITIONS, input.composition);
+  const title = (input.title || genre.titles[0]?.ko || '무제').trim();
+  const subtitle = (input.subtitle || genre.titles[0]?.en || '').trim();
+  const titleSegment = subtitle
+    ? `Korean title "${title}" / "${subtitle}"`
+    : `Korean title "${title}"`;
+
+  return [
+    'Vertical 2:3 Korean film festival poster',
+    'Use the uploaded image only as a loose color and composition reference',
+    'One fictional adult main character in the poster, centered, no additional characters',
+    'Do not reproduce the exact person, face, identity, or biometric likeness from the uploaded image',
+    genre.prompt,
+    mood,
+    lighting,
+    composition,
+    `${genre.expression} mood`,
+    titleSegment,
+    'BIFAN laurel',
+    'polished cinematic poster design.',
+  ].join(', ');
+}
+
+export function buildStandalonePosterPrompt(input) {
+  const genre = POSTER_GENRES.find((item) => item.label === input.genre) ?? POSTER_GENRES[0];
+  const mood = getOptionPrompt(POSTER_MOODS, input.mood);
+  const lighting = getOptionPrompt(POSTER_LIGHTING, input.lighting);
+  const composition = getOptionPrompt(POSTER_COMPOSITIONS, input.composition);
+  const title = (input.title || genre.titles[0]?.ko || '무제').trim();
+  const subtitle = (input.subtitle || genre.titles[0]?.en || '').trim();
+  const titleSegment = subtitle
+    ? `Korean title "${title}" / "${subtitle}"`
+    : `Korean title "${title}"`;
+
+  return [
+    'Vertical 2:3 Korean film festival poster',
+    'One fictional adult central character only',
+    'No real person likeness, no duplicate faces, no background people',
+    'Centered cinematic key art composition',
+    genre.prompt,
+    mood,
+    lighting,
+    composition,
+    `${genre.expression} mood`,
+    titleSegment,
+    'BIFAN laurel',
+    'polished cinematic poster design.',
   ].join(', ');
 }

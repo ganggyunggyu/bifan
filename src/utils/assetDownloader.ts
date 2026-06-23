@@ -42,10 +42,17 @@ export async function downloadWithProgress(
   onProgress: ProgressCallback,
 ): Promise<Blob> {
   const res = await fetch(url);
-  if (!res.ok || !res.body) {
+  if (!res.ok) {
     throw new Error(`download failed: ${res.status} ${url}`);
   }
   const total = Number(res.headers.get('Content-Length') ?? 0);
+
+  if (!res.body) {
+    const blob = await res.blob();
+    onProgress(blob.size, total || blob.size);
+    return blob;
+  }
+
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let loaded = 0;

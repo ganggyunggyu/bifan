@@ -6,6 +6,7 @@ dist-ssr
 !.env.example
 *.local
 .vercel
+.certs/
 .DS_Store
 *.tsbuildinfo
 work/

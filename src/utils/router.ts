@@ -63,7 +63,6 @@ export const ROUTES = {
   loading: '/',
   message: '/message',
   arLoading: '/ar-loading',
-  arCamera: '/ar-camera',
   arAnimation: '/ar-animation',
   messageIntro: '/message-intro',
   posterIntro: '/poster-intro',

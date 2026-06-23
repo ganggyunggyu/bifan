@@ -5,9 +5,14 @@ import {
   Color,
   DoubleSide,
   Group,
+  LinearFilter,
   Mesh,
   MeshBasicMaterial,
   LoopOnce,
+  PlaneGeometry,
+  SRGBColorSpace,
+  Texture,
+  TextureLoader,
   Vector3,
   type AnimationAction,
   type AnimationClip as ThreeAnimationClip,
@@ -16,24 +21,30 @@ import {
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
-  SKY_ANCHOR_MODEL_BATCH_HOLD_MS,
-  SKY_ANCHOR_MODEL_BATCH_SIZE,
+  SKY_ANCHOR_MODEL_ENTRY_STAGGER_MS,
+  SKY_ANCHOR_MODEL_FADE_OUT_MS,
+  SKY_ANCHOR_MODEL_VISIBLE_MS,
   SKY_ANCHOR_PROP_MODELS,
   type SkyAnchorPropModel,
 } from '../config/arConfig';
 import { cachedUrl } from '../utils/assetPreloader';
 
 interface ModelItem {
+  label: string;
+  kind: NonNullable<SkyAnchorPropModel['kind']>;
   wrapper: Group;
   pivot: Group;
   importedScene: Group;
   actions: AnimationAction[];
+  mixer?: AnimationMixer;
   slot: Vector3;
-  slotRotation: Vector3;
-  entryOffset: Vector3;
-  floatPhase: number;
+  sequenceIndex: number;
+  persistent: boolean;
   delay: number;
+  duration: number;
+  opacity: number;
   started: boolean;
+  sprite?: SpriteAnimation;
 }
 
 export interface SkyAnchorModelProgress {
@@ -46,75 +57,77 @@ export interface SkyAnchorModelDebugState {
   activeBatch: number;
   totalBatches: number;
   visibleCount: number;
+  persistentVisibleCount: number;
+  originLockedVisibleCount: number;
   loadedCount: number;
+  anchorLocked: boolean;
+  anchorX: number;
+  anchorY: number;
+  anchorZ: number;
+  anchorMode: string;
+  pngSequenceCount: number;
+  pngSequenceVisibleCount: number;
+  pngSequenceFrame: number;
+  pngSequenceFrameCount: number;
+  pngSequenceLabel: string;
 }
 
-interface SlotPose {
-  position: Vector3;
-  rotation: Vector3;
+export interface SkyAnchorVisibleItemBounds {
+  bounds: Box3;
+  label: string;
+  opacity: number;
+  sequenceIndex: number;
 }
 
-const THREE_MODEL_BATCH_FORMATIONS: SlotPose[][] = [
-  [
-    { position: new Vector3(-0.58, 0.12, 0.04), rotation: new Vector3(0.02, 0.22, -0.08) },
-    { position: new Vector3(0, -0.06, -0.02), rotation: new Vector3(0, 0, 0) },
-    { position: new Vector3(0.58, 0.1, 0.04), rotation: new Vector3(0.02, -0.22, 0.08) },
-  ],
-  [
-    { position: new Vector3(-0.52, -0.08, 0.03), rotation: new Vector3(-0.01, 0.18, -0.04) },
-    { position: new Vector3(0, 0.16, -0.03), rotation: new Vector3(0.02, 0, 0) },
-    { position: new Vector3(0.52, -0.08, 0.03), rotation: new Vector3(-0.01, -0.18, 0.04) },
-  ],
-  [
-    { position: new Vector3(-0.62, 0.04, 0.05), rotation: new Vector3(0.02, 0.24, -0.1) },
-    { position: new Vector3(0.02, -0.12, -0.03), rotation: new Vector3(-0.01, 0, 0.02) },
-    { position: new Vector3(0.62, 0.14, 0.05), rotation: new Vector3(0.02, -0.24, 0.1) },
-  ],
-];
+interface SpriteAnimation {
+  texture: Texture;
+  columns: number;
+  rows: number;
+  frameCount: number;
+  fps: number;
+  lastFrame: number;
+}
 
-const TWO_MODEL_BATCH_FORMATIONS: SlotPose[][] = [
-  [
-    { position: new Vector3(-0.38, 0.08, 0.03), rotation: new Vector3(0.02, 0.18, -0.06) },
-    { position: new Vector3(0.38, -0.06, 0.02), rotation: new Vector3(-0.01, -0.18, 0.06) },
-  ],
-  [
-    { position: new Vector3(-0.34, -0.06, 0.02), rotation: new Vector3(-0.01, 0.16, -0.04) },
-    { position: new Vector3(0.34, 0.1, 0.03), rotation: new Vector3(0.02, -0.16, 0.04) },
-  ],
-];
-const SINGLE_MODEL_SLOT: SlotPose = {
-  position: new Vector3(0, 0.04, 0),
-  rotation: new Vector3(0, 0, 0),
-};
-const SLOT_REVEAL_STAGGER_SECONDS = 0.12;
-const MODEL_PRESENTATION_SCALE = 1.35;
-const MAX_SLOT_DRIFT_X = 0.12;
-const MAX_SLOT_DRIFT_Y = 0.1;
+interface PlaybackAnimationClip {
+  clip: ThreeAnimationClip;
+}
+
+const ZERO_MODEL_SLOT = new Vector3(0, 0, 0);
+const MODEL_LOAD_CONCURRENCY = 2;
+const MODEL_PRESENTATION_SCALE = 1.22;
+const CAMERA_ANCHOR_Y = 0.06;
+const CAMERA_ANCHOR_Z = -3.0;
+const WORLD_ANCHOR_Y = 0.02;
 const MODEL_TINT_COLORS = ['#f7fbff', '#7fe5ff', '#ffd95c', '#ff73cf'];
+const ENTRY_STAGGER_SECONDS = SKY_ANCHOR_MODEL_ENTRY_STAGGER_MS / 1000;
+const VISIBLE_SECONDS = SKY_ANCHOR_MODEL_VISIBLE_MS / 1000;
+const FADE_OUT_SECONDS = SKY_ANCHOR_MODEL_FADE_OUT_MS / 1000;
 
-function getBatchPose(index: number): SlotPose {
-  const batchStart = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE) * SKY_ANCHOR_MODEL_BATCH_SIZE;
-  const batchCount = Math.min(
-    SKY_ANCHOR_MODEL_BATCH_SIZE,
-    SKY_ANCHOR_PROP_MODELS.length - batchStart,
-  );
-  const batchIndex = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE);
-  const slotIndex = index - batchStart;
-
-  if (batchCount === 1) return SINGLE_MODEL_SLOT;
-  if (batchCount === 2) {
-    const formation = TWO_MODEL_BATCH_FORMATIONS[batchIndex % TWO_MODEL_BATCH_FORMATIONS.length];
-    return formation?.[slotIndex] ?? SINGLE_MODEL_SLOT;
-  }
-
-  const formation = THREE_MODEL_BATCH_FORMATIONS[batchIndex % THREE_MODEL_BATCH_FORMATIONS.length];
-  return formation?.[slotIndex] ?? SINGLE_MODEL_SLOT;
+function getDescriptorDelay(descriptor: SkyAnchorPropModel, sequenceIndex: number): number {
+  if (descriptor.delay !== undefined) return descriptor.delay;
+  if (descriptor.persistent) return 0;
+  return sequenceIndex * ENTRY_STAGGER_SECONDS;
 }
 
-function getEntryOffset(slot: Vector3): Vector3 {
-  if (slot.x < -0.05) return new Vector3(-0.18, -0.06, 0.04);
-  if (slot.x > 0.05) return new Vector3(0.18, -0.06, 0.04);
-  return new Vector3(0, -0.14, 0.05);
+function isIntroPngSequence(descriptor: SkyAnchorPropModel, index: number): boolean {
+  return index === 0 && descriptor.kind === 'png-sequence' && !!descriptor.sprite;
+}
+
+function getDescriptorDurationSeconds(descriptor: SkyAnchorPropModel): number {
+  if (descriptor.persistent) return Number.POSITIVE_INFINITY;
+  if (descriptor.kind === 'png-sequence' && descriptor.sprite) {
+    return Math.max(descriptor.sprite.frameCount / Math.max(descriptor.sprite.fps, 1), 0.1);
+  }
+  return VISIBLE_SECONDS;
+}
+
+function getDescriptorLabel(descriptor: SkyAnchorPropModel): string {
+  if (descriptor.label) return descriptor.label;
+  return descriptor.url.split('/').pop() ?? descriptor.url;
+}
+
+function getTimelineSlot(): Vector3 {
+  return ZERO_MODEL_SLOT.clone();
 }
 
 function createLoader(): { loader: GLTFLoader; dispose: () => void } {
@@ -131,6 +144,16 @@ function createLoader(): { loader: GLTFLoader; dispose: () => void } {
   };
 }
 
+function setSpriteFrame(sprite: SpriteAnimation, frameIndex: number): void {
+  const frame = ((frameIndex % sprite.frameCount) + sprite.frameCount) % sprite.frameCount;
+  if (frame === sprite.lastFrame) return;
+
+  const col = frame % sprite.columns;
+  const row = Math.floor(frame / sprite.columns);
+  sprite.texture.offset.set(col / sprite.columns, 1 - (row + 1) / sprite.rows);
+  sprite.lastFrame = frame;
+}
+
 function brightenModelMaterials(root: Group, modelIndex: number): void {
   const tint = new Color(MODEL_TINT_COLORS[modelIndex % MODEL_TINT_COLORS.length]);
 
@@ -140,46 +163,89 @@ function brightenModelMaterials(root: Group, modelIndex: number): void {
     child.frustumCulled = false;
     child.renderOrder = 999;
     const materials = Array.isArray(child.material) ? child.material : [child.material];
-    const converted = materials.map((material) => {
+    const visibleMaterials = materials.map((material) => {
       const source = material as typeof material & {
+        alphaMap?: Texture | null;
+        alphaTest?: number;
         color?: Color;
+        map?: Texture | null;
+        opacity?: number;
+        vertexColors?: boolean;
       };
-      const color = source.color
-        ? source.color.clone().lerp(tint, 0.72).multiplyScalar(1.25)
-        : tint.clone();
+      const map = source.map ?? null;
+      const alphaMap = source.alphaMap ?? null;
+      const sourceColor = source.color?.clone() ?? (map ? new Color('#ffffff') : tint.clone());
+      const sourceOpacity = Number.isFinite(source.opacity) ? source.opacity : 1;
+      const sourceAlphaTest = Number.isFinite(source.alphaTest) ? source.alphaTest : 0.01;
+
+      if (map) {
+        map.colorSpace = SRGBColorSpace;
+        map.flipY = false;
+        map.minFilter = LinearFilter;
+        map.magFilter = LinearFilter;
+        map.needsUpdate = true;
+      }
+      if (alphaMap) {
+        alphaMap.flipY = false;
+        alphaMap.minFilter = LinearFilter;
+        alphaMap.magFilter = LinearFilter;
+        alphaMap.needsUpdate = true;
+      }
 
       return new MeshBasicMaterial({
         name: material.name,
-        color,
+        color: sourceColor,
+        map,
+        alphaMap,
+        alphaTest: sourceAlphaTest,
         side: DoubleSide,
         transparent: true,
-        opacity: 1,
+        opacity: sourceOpacity,
         depthTest: false,
         depthWrite: false,
         toneMapped: false,
+        vertexColors: source.vertexColors ?? false,
       });
     });
 
-    child.material = Array.isArray(child.material) ? converted : converted[0];
+    child.material = Array.isArray(child.material) ? visibleMaterials : visibleMaterials[0];
   });
 }
 
-function createCenteredAnimationClip(sourceClip: ThreeAnimationClip): ThreeAnimationClip | null {
-  const tracks = sourceClip.tracks.filter((track) => !track.name.endsWith('.position'));
+function createPlaybackAnimationClip(sourceClip: ThreeAnimationClip): PlaybackAnimationClip | null {
+  const tracks = sourceClip.tracks.reduce<ThreeAnimationClip['tracks']>((nextTracks, track) => {
+    const name = track.name;
+    if (
+      name.endsWith('.position') ||
+      name.endsWith('.visible') ||
+      name.includes('.material.opacity') ||
+      name.includes('.material[')
+    ) {
+      return nextTracks;
+    }
+
+    const clonedTrack = track.clone();
+    nextTracks.push(clonedTrack);
+    return nextTracks;
+  }, []);
+
   if (!tracks.length) return null;
-  return new AnimationClip(`${sourceClip.name || 'clip'}-centered`, sourceClip.duration, tracks);
+  return {
+    clip: new AnimationClip(`${sourceClip.name || 'clip'}-playback`, sourceClip.duration, tracks),
+  };
 }
 
 function fitModelToBounds(
   root: Group,
   descriptor: SkyAnchorPropModel,
   index: number,
+  sequenceIndex: number,
+  delay: number,
+  duration: number,
 ): ModelItem {
   const wrapper = new Group();
   const pivot = new Group();
-  const pose = getBatchPose(index);
-  const slot = pose.position.clone();
-  const slotRotation = pose.rotation.clone();
+  const slot = getTimelineSlot();
   const box = new Box3().setFromObject(root);
   const size = new Vector3();
   const center = new Vector3();
@@ -192,7 +258,6 @@ function fitModelToBounds(
   const maxAxis = Math.max(size.x, size.y, size.z, 0.001);
   wrapper.name = `bifan-animated-model-${index}`;
   wrapper.position.copy(slot);
-  wrapper.rotation.set(slotRotation.x, slotRotation.y, slotRotation.z);
   wrapper.scale.setScalar((descriptor.size * MODEL_PRESENTATION_SCALE) / maxAxis);
   wrapper.visible = false;
   wrapper.add(pivot);
@@ -200,16 +265,89 @@ function fitModelToBounds(
   brightenModelMaterials(root, index);
 
   return {
+    label: getDescriptorLabel(descriptor),
+    kind: descriptor.kind ?? 'gltf',
     wrapper,
     pivot,
     importedScene: root,
     actions: [],
     slot,
-    slotRotation,
-    entryOffset: getEntryOffset(slot),
-    floatPhase: index * 0.73,
-    delay: descriptor.delay ?? ((index % SKY_ANCHOR_MODEL_BATCH_SIZE) * SLOT_REVEAL_STAGGER_SECONDS),
+    sequenceIndex,
+    persistent: !!descriptor.persistent,
+    delay,
+    duration,
+    opacity: 1,
     started: false,
+  };
+}
+
+function createSpriteItem(
+  texture: Texture,
+  descriptor: SkyAnchorPropModel,
+  index: number,
+  sequenceIndex: number,
+  delay: number,
+  duration: number,
+): ModelItem {
+  if (!descriptor.sprite) {
+    throw new Error('sprite descriptor missing');
+  }
+
+  texture.colorSpace = SRGBColorSpace;
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.repeat.set(1 / descriptor.sprite.columns, 1 / descriptor.sprite.rows);
+  texture.needsUpdate = true;
+  const wrapper = new Group();
+  const pivot = new Group();
+  const slot = getTimelineSlot();
+  const material = new MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 1,
+    alphaTest: 0.01,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+    side: DoubleSide,
+  });
+  const geometry = new PlaneGeometry(descriptor.sprite.aspect, 1);
+  const mesh = new Mesh(geometry, material);
+  const sprite: SpriteAnimation = {
+    texture,
+    columns: descriptor.sprite.columns,
+    rows: descriptor.sprite.rows,
+    frameCount: descriptor.sprite.frameCount,
+    fps: descriptor.sprite.fps,
+    lastFrame: -1,
+  };
+
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1000;
+  pivot.add(mesh);
+  wrapper.name = `bifan-animated-sprite-${index}`;
+  wrapper.position.copy(slot);
+  wrapper.scale.setScalar(descriptor.size * MODEL_PRESENTATION_SCALE);
+  wrapper.visible = false;
+  wrapper.add(pivot);
+  setSpriteFrame(sprite, 0);
+
+  return {
+    label: getDescriptorLabel(descriptor),
+    kind: descriptor.kind === 'png-sequence' ? 'png-sequence' : 'sprite',
+    wrapper,
+    pivot,
+    importedScene: pivot,
+    actions: [],
+    slot: slot.clone(),
+    sequenceIndex,
+    persistent: !!descriptor.persistent,
+    delay,
+    duration,
+    opacity: 1,
+    started: false,
+    sprite,
   };
 }
 
@@ -220,8 +358,8 @@ function fitModelToAnimationBounds(
 ): void {
   const bounds = new Box3();
   const sampleBox = new Box3();
+  const fitCenter = new Vector3();
   const fitSize = new Vector3();
-  const pathCenter = new Vector3();
   const sampleMixer = new AnimationMixer(item.importedScene);
   const sampleAction = sampleMixer.clipAction(clip);
   const sampleCount = Math.max(12, Math.ceil(clip.duration * 10));
@@ -247,9 +385,9 @@ function fitModelToAnimationBounds(
 
   if (bounds.isEmpty()) return;
 
+  bounds.getCenter(fitCenter);
   bounds.getSize(fitSize);
-  bounds.getCenter(pathCenter);
-  item.pivot.position.sub(pathCenter.sub(item.wrapper.position));
+  item.pivot.position.sub(fitCenter.sub(item.wrapper.position));
   item.wrapper.scale.setScalar(
     (descriptor.size * MODEL_PRESENTATION_SCALE) / Math.max(fitSize.x, fitSize.y, fitSize.z, 0.001),
   );
@@ -260,12 +398,51 @@ function resetItem(item: ModelItem): void {
   item.started = false;
   item.wrapper.visible = false;
   item.wrapper.position.copy(item.slot);
-  item.wrapper.rotation.set(item.slotRotation.x, item.slotRotation.y, item.slotRotation.z);
+  setItemOpacity(item, 1);
   item.actions.forEach((action) => {
     action.stop();
     action.reset();
     action.enabled = true;
     action.paused = true;
+  });
+  if (item.sprite) {
+    item.sprite.lastFrame = -1;
+    setSpriteFrame(item.sprite, 0);
+  }
+}
+
+function startItem(item: ModelItem): void {
+  item.started = true;
+  item.wrapper.visible = true;
+  setItemOpacity(item, 1);
+  item.actions.forEach((action) => {
+    action.reset();
+    action.enabled = true;
+    action.paused = false;
+    action.play();
+  });
+}
+
+function getItemOpacity(localElapsed: number, duration: number): number {
+  const fadeDuration = Math.max(FADE_OUT_SECONDS, 0.001);
+  const fadeStart = Math.max(0, duration - fadeDuration);
+  if (localElapsed <= fadeStart) return 1;
+  return Math.max(0, 1 - (localElapsed - fadeStart) / fadeDuration);
+}
+
+function setItemOpacity(item: ModelItem, opacity: number): void {
+  if (item.kind === 'png-sequence') return;
+  if (Math.abs(item.opacity - opacity) < 0.001) return;
+
+  item.opacity = opacity;
+  item.wrapper.traverse((child) => {
+    if (!(child instanceof Mesh)) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => {
+      if (!(material instanceof MeshBasicMaterial)) return;
+      material.opacity = opacity;
+    });
   });
 }
 
@@ -279,10 +456,12 @@ export class SkyAnchorModelPlayer {
   private playAnimations = false;
   private loaded = false;
   private activeBatch = -1;
+  private anchorLocked = false;
+  private anchorMode = 'unlocked';
 
   constructor() {
-    this.root.name = 'bifan-camera-locked-anchor';
-    this.root.position.set(0, 0, -2.2);
+    this.root.name = 'bifan-world-locked-anchor';
+    this.root.position.set(0, CAMERA_ANCHOR_Y, CAMERA_ANCHOR_Z);
     this.root.rotation.set(0, 0, 0);
     this.root.visible = false;
   }
@@ -290,22 +469,65 @@ export class SkyAnchorModelPlayer {
   async load(onProgress?: (progress: SkyAnchorModelProgress) => void): Promise<void> {
     if (this.loaded) return;
 
-    const { loader, dispose } = createLoader();
     let loaded = 0;
     let failed = 0;
     const total = SKY_ANCHOR_PROP_MODELS.length;
+    const sequenceIndexes: number[] = SKY_ANCHOR_PROP_MODELS.map(() => -1);
+    const sequenceDelays: number[] = SKY_ANCHOR_PROP_MODELS.map(() => 0);
+    const sequenceDurations: number[] = SKY_ANCHOR_PROP_MODELS.map(getDescriptorDurationSeconds);
+    const loadedItems: Array<ModelItem | null> = Array.from({ length: total }, () => null);
+    let nextSequenceIndex = 0;
+    let nextLoadIndex = 0;
+    const introEndSeconds = SKY_ANCHOR_PROP_MODELS.reduce((end, descriptor, index) => {
+      if (!isIntroPngSequence(descriptor, index)) return end;
+      const delay = descriptor.delay ?? 0;
+      return Math.max(end, delay + getDescriptorDurationSeconds(descriptor));
+    }, 0);
 
+    SKY_ANCHOR_PROP_MODELS.forEach((descriptor, index) => {
+      const duration = sequenceDurations[index];
+      if (descriptor.persistent) {
+        sequenceDelays[index] = descriptor.delay ?? 0;
+        return;
+      }
+      if (isIntroPngSequence(descriptor, index)) {
+        sequenceDelays[index] = descriptor.delay ?? 0;
+        return;
+      }
+      sequenceIndexes[index] = nextSequenceIndex;
+      sequenceDelays[index] =
+        descriptor.delay ?? getDescriptorDelay(descriptor, nextSequenceIndex) + introEndSeconds;
+      sequenceDurations[index] = duration;
+      nextSequenceIndex += 1;
+    });
     onProgress?.({ loaded, failed, total });
 
-    try {
-      for (let index = 0; index < SKY_ANCHOR_PROP_MODELS.length; index += 1) {
+    const loadNext = async (): Promise<void> => {
+      for (;;) {
+        const index = nextLoadIndex;
+        nextLoadIndex += 1;
+        if (index >= SKY_ANCHOR_PROP_MODELS.length) return;
+
         const descriptor = SKY_ANCHOR_PROP_MODELS[index];
+        const itemSequenceIndex = sequenceIndexes[index];
+        const itemDelay = sequenceDelays[index];
+        const itemDuration = sequenceDurations[index];
         try {
-          const gltf = await loader.loadAsync(cachedUrl(descriptor.url));
-          const item = fitModelToBounds(gltf.scene, descriptor, index);
-          this.registerAnimations(item, gltf, descriptor);
-          this.items.push(item);
-          this.root.add(item.wrapper);
+          let item: ModelItem;
+          if (descriptor.kind === 'sprite' || descriptor.kind === 'png-sequence') {
+            const texture = await new TextureLoader().loadAsync(cachedUrl(descriptor.url));
+            item = createSpriteItem(texture, descriptor, index, itemSequenceIndex, itemDelay, itemDuration);
+          } else {
+            const { loader, dispose } = createLoader();
+            try {
+              const gltf = await loader.loadAsync(cachedUrl(descriptor.url));
+              item = fitModelToBounds(gltf.scene, descriptor, index, itemSequenceIndex, itemDelay, itemDuration);
+              this.registerAnimations(item, gltf, descriptor);
+            } finally {
+              dispose();
+            }
+          }
+          loadedItems[index] = item;
           loaded += 1;
         } catch (err) {
           failed += 1;
@@ -313,9 +535,17 @@ export class SkyAnchorModelPlayer {
         }
         onProgress?.({ loaded, failed, total });
       }
-    } finally {
-      dispose();
-    }
+    };
+
+    await Promise.all(
+      Array.from(
+        { length: Math.min(MODEL_LOAD_CONCURRENCY, SKY_ANCHOR_PROP_MODELS.length) },
+        () => loadNext(),
+      ),
+    );
+
+    this.items = loadedItems.filter((item): item is ModelItem => item !== null);
+    this.items.forEach((item) => this.root.add(item.wrapper));
 
     if (!this.items.length) {
       throw new Error('sky-anchor model load failed');
@@ -326,6 +556,44 @@ export class SkyAnchorModelPlayer {
 
   attachToScene(scene: Scene): void {
     scene.add(this.root);
+  }
+
+  lockToFallbackWorld(): void {
+    if (this.anchorLocked) return;
+
+    this.root.position.set(0, CAMERA_ANCHOR_Y, CAMERA_ANCHOR_Z);
+    this.root.rotation.set(0, 0, 0);
+    this.root.updateMatrixWorld(true);
+    this.anchorLocked = true;
+    this.anchorMode = 'fallback-fixed';
+  }
+
+  lockToHitTestResult(
+    hit: {
+      position: { x: number; y: number; z: number };
+      type?: string;
+    },
+    camera?: { getWorldPosition: (target: Vector3) => Vector3 },
+  ): void {
+    if (this.anchorLocked) return;
+
+    this.root.position.set(
+      hit.position.x,
+      hit.position.y + WORLD_ANCHOR_Y,
+      hit.position.z,
+    );
+    if (camera) {
+      const cameraPosition = new Vector3();
+      camera.getWorldPosition(cameraPosition);
+      const dx = cameraPosition.x - this.root.position.x;
+      const dz = cameraPosition.z - this.root.position.z;
+      this.root.rotation.set(0, Math.atan2(dx, dz), 0);
+    } else {
+      this.root.rotation.set(0, 0, 0);
+    }
+    this.root.updateMatrixWorld(true);
+    this.anchorLocked = true;
+    this.anchorMode = `hittest:${hit.type ?? 'UNKNOWN'}`;
   }
 
   reveal(playAnimations = false): void {
@@ -339,6 +607,10 @@ export class SkyAnchorModelPlayer {
         item.started = true;
         item.wrapper.visible = true;
       });
+    } else {
+      this.items.forEach((item) => {
+        if (item.persistent) startItem(item);
+      });
     }
   }
 
@@ -350,43 +622,71 @@ export class SkyAnchorModelPlayer {
     }
 
     const revealElapsed = elapsedSeconds - this.revealStartedAt;
-    const batchDuration = SKY_ANCHOR_MODEL_BATCH_HOLD_MS / 1000;
-    const totalBatches = Math.max(1, Math.ceil(this.items.length / SKY_ANCHOR_MODEL_BATCH_SIZE));
-    const activeBatch = Math.min(
-      Math.floor(revealElapsed / batchDuration),
-      totalBatches - 1,
+    const propSequenceItems = this.items.filter((item) => !item.persistent && item.sequenceIndex >= 0);
+    const firstPropDelay = propSequenceItems.reduce(
+      (min, item) => Math.min(min, item.delay),
+      Number.POSITIVE_INFINITY,
     );
-    const batchElapsed = revealElapsed - activeBatch * batchDuration;
-    this.activeBatch = activeBatch;
+    this.activeBatch =
+      propSequenceItems.length > 0 && revealElapsed >= firstPropDelay
+        ? Math.min(
+            Math.floor((revealElapsed - firstPropDelay) / ENTRY_STAGGER_SECONDS),
+            propSequenceItems.length - 1,
+          )
+        : -1;
 
-    this.items.forEach((item, index) => {
-      const itemBatch = Math.floor(index / SKY_ANCHOR_MODEL_BATCH_SIZE);
-      if (itemBatch !== activeBatch) {
+    this.items.forEach((item) => {
+      const localElapsed = revealElapsed - item.delay;
+      if (item.persistent) {
+        if (localElapsed < 0) {
+          if (item.started || item.wrapper.visible) resetItem(item);
+          return;
+        }
+        if (!item.started) startItem(item);
+        setItemOpacity(item, 1);
+        return;
+      }
+
+      if (localElapsed < 0 || localElapsed >= item.duration) {
         if (item.started || item.wrapper.visible) resetItem(item);
         return;
       }
 
-      if (item.started || batchElapsed < item.delay) return;
-      item.started = true;
-      item.wrapper.visible = true;
-      item.actions.forEach((action) => {
-        action.reset();
-        action.enabled = true;
-        action.paused = false;
-        action.play();
-      });
+      if (!item.started) startItem(item);
+      setItemOpacity(item, getItemOpacity(localElapsed, item.duration));
     });
-    this.mixers.forEach((mixer) => mixer.update(deltaSeconds));
-    this.applyPresentationMotion(batchElapsed);
-    this.constrainVisibleItemsToSlots();
+    this.items.forEach((item) => {
+      if (!item.mixer || !item.wrapper.visible || !item.started) return;
+      item.mixer.update(deltaSeconds);
+    });
+    this.updateSpriteAnimations(revealElapsed);
   }
 
   getDebugState(): SkyAnchorModelDebugState {
+    const sequenceItemCount = this.items.filter((item) => !item.persistent && item.sequenceIndex >= 0).length;
+    const visibleItems = this.items.filter((item) => item.wrapper.visible);
+    const pngSequenceItems = this.items.filter((item) => item.kind === 'png-sequence');
+    const visiblePngSequenceItems = visibleItems.filter((item) => item.kind === 'png-sequence');
+    const debugPngSequence = visiblePngSequenceItems[0] ?? pngSequenceItems[0];
     return {
       activeBatch: this.activeBatch,
-      totalBatches: Math.ceil(this.items.length / SKY_ANCHOR_MODEL_BATCH_SIZE),
-      visibleCount: this.items.filter((item) => item.wrapper.visible).length,
+      totalBatches: sequenceItemCount,
+      visibleCount: visibleItems.length,
+      persistentVisibleCount: visibleItems.filter((item) => item.persistent).length,
+      originLockedVisibleCount: visibleItems.filter((item) =>
+        item.wrapper.position.lengthSq() < 0.000001
+      ).length,
       loadedCount: this.items.length,
+      anchorLocked: this.anchorLocked,
+      anchorX: this.root.position.x,
+      anchorY: this.root.position.y,
+      anchorZ: this.root.position.z,
+      anchorMode: this.anchorMode,
+      pngSequenceCount: pngSequenceItems.length,
+      pngSequenceVisibleCount: visiblePngSequenceItems.length,
+      pngSequenceFrame: debugPngSequence?.sprite?.lastFrame ?? -1,
+      pngSequenceFrameCount: debugPngSequence?.sprite?.frameCount ?? 0,
+      pngSequenceLabel: debugPngSequence?.label ?? '',
     };
   }
 
@@ -401,6 +701,22 @@ export class SkyAnchorModelPlayer {
     });
 
     return bounds;
+  }
+
+  getVisibleItemBounds(): SkyAnchorVisibleItemBounds[] {
+    const bounds = new Box3();
+
+    return this.items
+      .filter((item) => item.wrapper.visible)
+      .map((item) => {
+        bounds.setFromObject(item.pivot);
+        return {
+          bounds: bounds.clone(),
+          label: item.label,
+          opacity: item.opacity,
+          sequenceIndex: item.sequenceIndex,
+        };
+      });
   }
 
   dispose(): void {
@@ -423,80 +739,36 @@ export class SkyAnchorModelPlayer {
     this.items = [];
     this.loaded = false;
     this.activeBatch = -1;
+    this.anchorLocked = false;
+    this.anchorMode = 'unlocked';
   }
 
   private registerAnimations(item: ModelItem, gltf: GLTF, descriptor: SkyAnchorPropModel): void {
     const sourceClip = gltf.animations.find((candidate) => candidate.tracks.length > 0);
     if (!sourceClip) return;
-    const presentationClip = createCenteredAnimationClip(sourceClip);
-    if (!presentationClip) return;
+    const playback = createPlaybackAnimationClip(sourceClip);
 
-    fitModelToAnimationBounds(item, presentationClip, descriptor);
+    if (!playback) return;
+    fitModelToAnimationBounds(item, playback.clip, descriptor);
 
     const mixer = new AnimationMixer(item.importedScene);
-    const action = mixer.clipAction(presentationClip);
+    const action = mixer.clipAction(playback.clip);
     action.setLoop(LoopOnce, 1);
     action.enabled = true;
     action.paused = true;
     action.clampWhenFinished = true;
-    action.timeScale = Math.max(
-      1,
-      presentationClip.duration / Math.max(SKY_ANCHOR_MODEL_BATCH_HOLD_MS / 1000 - item.delay - 0.25, 0.5),
-    );
     item.actions.push(action);
+    item.mixer = mixer;
     this.mixers.push(mixer);
     this.mixerRoots.push(item.importedScene);
   }
 
-  private applyPresentationMotion(batchElapsed: number): void {
+  private updateSpriteAnimations(revealElapsed: number): void {
     this.items.forEach((item) => {
-      if (!item.wrapper.visible || !item.started) return;
+      if (!item.sprite || !item.wrapper.visible || !item.started) return;
 
-      const localElapsed = Math.max(0, batchElapsed - item.delay);
-      const intro = Math.min(localElapsed / 0.45, 1);
-      const easeOut = 1 - Math.pow(1 - intro, 3);
-      const hover = Math.sin((localElapsed + item.floatPhase) * 2.6) * 0.012;
-      const settleX = item.entryOffset.x * (1 - easeOut);
-      const settleY = item.entryOffset.y * (1 - easeOut) + hover;
-      const settleZ = item.entryOffset.z * (1 - easeOut);
-      const tilt = Math.sin((localElapsed + item.floatPhase) * 1.8) * 0.018;
-
-      item.wrapper.position.set(
-        item.slot.x + settleX,
-        item.slot.y + settleY,
-        item.slot.z + settleZ,
-      );
-      item.wrapper.rotation.set(
-        item.slotRotation.x,
-        item.slotRotation.y,
-        item.slotRotation.z + tilt,
-      );
-    });
-  }
-
-  private constrainVisibleItemsToSlots(): void {
-    const bounds = new Box3();
-    const center = new Vector3();
-
-    this.root.updateMatrixWorld(true);
-    this.items.forEach((item) => {
-      if (!item.wrapper.visible) return;
-
-      bounds.setFromObject(item.pivot);
-      if (bounds.isEmpty()) return;
-
-      bounds.getCenter(center);
-      this.root.worldToLocal(center);
-
-      const driftX = center.x - item.slot.x;
-      if (Math.abs(driftX) > MAX_SLOT_DRIFT_X) {
-        item.wrapper.position.x -= driftX - Math.sign(driftX) * MAX_SLOT_DRIFT_X;
-      }
-
-      const driftY = center.y - item.slot.y;
-      if (Math.abs(driftY) > MAX_SLOT_DRIFT_Y) {
-        item.wrapper.position.y -= driftY - Math.sign(driftY) * MAX_SLOT_DRIFT_Y;
-      }
+      const localElapsed = Math.max(0, revealElapsed - item.delay);
+      setSpriteFrame(item.sprite, Math.floor(localElapsed * item.sprite.fps));
     });
   }
 }

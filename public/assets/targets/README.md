@@ -29,4 +29,4 @@
 - 인식→3초→앵커 영상: `src/pages/ARCameraPage.ts`
 - 벽면 크기 앵커링: `src/ar/PropAnimationPlayer.ts` (`updateAnchorPose`)
 
-> ENABLE_IMAGE_TARGET=false(기본)일 때는 시뮬레이션 버튼 기반 mock으로 동작합니다.
+> Module A는 `ENABLE_IMAGE_TARGET=true`로 실행합니다. 시뮬레이션 버튼 기반 mock 경로는 제거했습니다.

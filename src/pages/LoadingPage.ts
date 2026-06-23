@@ -2,14 +2,16 @@ import type { Page } from './Page';
 import { Modal } from '../components/Modal';
 import { ProgressBar } from '../components/ProgressBar';
 import { createBifanLogo } from '../components/Brand';
-import { preloadAll, getTotalBytes } from '../utils/assetPreloader';
+import { preloadAll, getTotalBytes, AssetPreloadError } from '../utils/assetPreloader';
 import { appState } from '../store/appState';
 import { router, ROUTES } from '../utils/router';
-import { DOWNLOAD_SIZE_MB, MODAL_DELAY_MS } from '../config/appConfig';
+import { DOWNLOAD_DURATION_MS, DOWNLOAD_SIZE_MB, MODAL_DELAY_MS } from '../config/appConfig';
 
 const BYTES_PER_MB = 1024 * 1024;
 const FALLBACK_TOTAL_BYTES = DOWNLOAD_SIZE_MB * BYTES_PER_MB;
+const MIN_DOWNLOAD_VISIBLE_MS = DOWNLOAD_DURATION_MS;
 const toMB = (bytes: number): string => (bytes / BYTES_PER_MB).toFixed(0);
+const wait = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 /**
  * [Screen 1] 로딩 페이지 + 데이터 다운로드 모달
@@ -20,6 +22,7 @@ export class LoadingPage implements Page {
   private modal: Modal | null = null;
   private root!: HTMLElement;
   private cancelled = false;
+  private downloading = false;
   private totalBytes = 0;
 
   mount(root: HTMLElement): void {
@@ -74,6 +77,8 @@ export class LoadingPage implements Page {
   }
 
   private startDownload(): void {
+    if (this.downloading) return;
+    this.downloading = true;
     this.modal?.close();
     this.renderProgress();
   }
@@ -82,6 +87,7 @@ export class LoadingPage implements Page {
     this.root.replaceChildren();
     const screen = document.createElement('div');
     screen.className = 'screen screen--center loading-page';
+    screen.dataset.downloadState = 'running';
 
     screen.appendChild(createBifanLogo());
 
@@ -97,19 +103,60 @@ export class LoadingPage implements Page {
     // 실제 바이트 기준 진행률 표시(MB).
     const update = (loadedBytes: number, totalBytes: number) => {
       const total = Math.max(totalBytes, loadedBytes, FALLBACK_TOTAL_BYTES, 1);
+      screen.dataset.downloadLoaded = String(loadedBytes);
+      screen.dataset.downloadTotal = String(total);
       label.textContent = `데이터 다운로드 중... (${toMB(loadedBytes)}MB / ${toMB(total)}MB)`;
       bar.setProgress(loadedBytes / total);
       appState.set({ downloadProgress: loadedBytes / total });
     };
     update(0, this.totalBytes);
 
-    // 실제 에셋(영상 등)을 전부 받아 blob으로 캐시 → 재생 중 끊김 방지.
-    preloadAll(update, this.totalBytes).then(() => {
-      if (this.cancelled) return; // 다운로드 중 이탈 시 잔여 네비게이션 방지.
-      appState.set({ downloadComplete: true, downloadProgress: 1 });
-      // 다운로드 → AR 데이터 로딩 (감사 메시지는 영상재생 뒤로 이동).
-      router.navigate(ROUTES.arLoading);
-    });
+    // 실제 에셋(프랍/오디오 등)을 전부 받아 blob으로 캐시 → 재생 중 끊김 방지.
+    Promise.all([
+      preloadAll(update, this.totalBytes),
+      wait(MIN_DOWNLOAD_VISIBLE_MS),
+    ])
+      .then(async ([result]) => {
+        if (this.cancelled) return; // 다운로드 중 이탈 시 잔여 네비게이션 방지.
+        screen.dataset.downloadState = 'complete';
+        screen.dataset.downloadAssetCount = String(result.assetCount);
+        appState.set({ downloadComplete: true, downloadProgress: 1 });
+        // 다운로드 → AR 데이터 로딩 (감사 메시지는 프랍 재생 뒤로 이동).
+        router.navigate(ROUTES.arLoading);
+      })
+      .catch((err) => {
+        if (this.cancelled) return;
+        this.downloading = false;
+        screen.dataset.downloadState = 'failed';
+        const failureCount = err instanceof AssetPreloadError ? err.failures.length : 1;
+        screen.dataset.downloadFailureCount = String(failureCount);
+        console.error('[LoadingPage] download failed', err);
+        this.renderDownloadError(failureCount);
+      });
+  }
+
+  private renderDownloadError(failureCount: number): void {
+    this.root.replaceChildren();
+
+    const screen = document.createElement('div');
+    screen.className = 'screen screen--center loading-page';
+    screen.dataset.downloadState = 'failed';
+    screen.dataset.downloadFailureCount = String(failureCount);
+
+    screen.appendChild(createBifanLogo());
+
+    const label = document.createElement('p');
+    label.className = 'progress-label';
+    label.textContent = `데이터 다운로드에 실패했습니다. (${failureCount}개 파일)`;
+    screen.appendChild(label);
+
+    const retry = document.createElement('button');
+    retry.className = 'btn btn-primary';
+    retry.textContent = '다시 다운로드';
+    retry.addEventListener('click', () => this.startDownload());
+    screen.appendChild(retry);
+
+    this.root.appendChild(screen);
   }
 
   unmount(): void {

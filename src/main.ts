@@ -3,7 +3,6 @@ import { initRouter, ROUTES } from './utils/router';
 import { LoadingPage } from './pages/LoadingPage';
 import { MessagePage } from './pages/MessagePage';
 import { DataLoadingPage } from './pages/DataLoadingPage';
-import { ARCameraPage } from './pages/ARCameraPage';
 import { ARAnimationPage } from './pages/ARAnimationPage';
 import { PosterCameraPage } from './pages/PosterCameraPage';
 import { PosterStylePage } from './pages/PosterStylePage';
@@ -21,7 +20,6 @@ router
   .register(ROUTES.loading, () => new LoadingPage())
   .register(ROUTES.message, () => new MessagePage())
   .register(ROUTES.arLoading, () => new DataLoadingPage())
-  .register(ROUTES.arCamera, () => new ARCameraPage())
   .register(ROUTES.arAnimation, () => new ARAnimationPage())
   .register(ROUTES.poster, () => new PosterCameraPage())
   .register(ROUTES.posterStyle, () => new PosterStylePage())

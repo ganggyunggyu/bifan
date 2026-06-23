@@ -1,7 +1,7 @@
 /**
  * 포스터 스타일 선택지 (Screen 8) — BIFAN 프롬프트 가이드 v3.
  *
- * 사진 1~4장 + 장르8 × 분위기8 × 조명8 × 구도8.
+ * 사진 1장 + 장르8 × 분위기8 × 조명8 × 구도8.
  * 장르 선택 시 표정과 제목 후보가 자동 결정됩니다.
  */
 
@@ -166,8 +166,8 @@ export const MOOD_OPTIONS = POSTER_MOODS.map((item) => item.label);
 export const LIGHTING_OPTIONS = POSTER_LIGHTING.map((item) => item.label);
 export const COMPOSITION_OPTIONS = POSTER_COMPOSITIONS.map((item) => item.label);
 
-/** 인물수 상한(사진 첨부 가능 장수). 가이드 v3: 1~4장. */
-export const MAX_PEOPLE = 4;
+/** 인물 사진 첨부 장수. 현장 플로우는 1장 촬영 후 바로 스타일 선택으로 이동합니다. */
+export const MAX_PEOPLE = 1;
 
 export const RECOMMENDED_TITLES: Record<string, string> = Object.fromEntries(
   POSTER_GENRES.map((genre) => [genre.label, genre.titles[0]?.ko ?? '']),
@@ -203,9 +203,13 @@ export function buildPosterPrompt(input: BuildPosterPromptInput): string {
     : `Korean title "${title}"`;
 
   return [
-    'Hollywood blockbuster movie poster',
-    '2:3',
-    'faithful likeness of the attached photo(s)',
+    'Vertical 2:3 cinematic Korean movie poster',
+    'Use the first attached photo as visual reference',
+    'Feature one single central main character only',
+    'If the reference photo contains multiple people, choose only the most central person',
+    'Keep the character centered and prominent',
+    'Do not include any extra characters, background people, reflections, or duplicate faces',
+    'Stylize the reference into fictional festival key art, preserving pose, hairstyle, wardrobe color, and overall vibe',
     genre.prompt,
     mood,
     lighting,

@@ -1,20 +1,23 @@
 /**
  * AI 포스터 생성 API 연동 (프롬프트 가이드 v3).
  *
- * `generatePoster`가 서버리스 함수 `/api/generate-poster`(gpt-image-1 edits)를
+ * `generatePoster`가 서버리스 함수 `/api/generate-poster`(gpt-image-2 edits)를
  * 호출합니다. 텍스트(제목·부제·로렐)는 이미지 모델이 직접 렌더하므로 클라이언트
  * 오버레이는 없습니다. 네트워크/생성 실패 시에는 사진+제목을 합성한 placeholder
  * 포스터(`generatePlaceholderPoster`)로 폴백합니다.
  */
 import { COLORS } from '../config/appConfig';
+import { MAX_PEOPLE } from '../config/posterOptions';
 import type { AppState } from '../store/appState';
 
+const POSTER_API_TIMEOUT_MS = 52000;
+
 /**
- * 서버 파이프라인(gpt-image-1 edits)에 넘기는 요청.
- * 인물 사진 1~4장(images) + 선택값. 프롬프트는 서버에서 조립한다.
+ * 서버 파이프라인(gpt-image-2 edits)에 넘기는 요청.
+ * 인물 사진 1장(images) + 선택값. 프롬프트는 서버에서 조립한다.
  */
 export interface PosterGenerateRequest {
-  images: string[]; // dataURL(base64) 1~4장
+  images: string[]; // dataURL(base64) 1장
   genre: string;
   mood: string;
   lighting: string;
@@ -25,6 +28,9 @@ export interface PosterGenerateRequest {
 
 export interface PosterGenerateResponse {
   imageUrl: string;
+  source: 'openai' | 'placeholder';
+  inputImages: number;
+  model?: string;
 }
 
 /** 전역 상태 + 압축된 사진들로 생성 요청 객체를 조립. */
@@ -41,7 +47,7 @@ export function buildPromptRequest(
   >,
 ): PosterGenerateRequest {
   return {
-    images,
+    images: images.slice(0, MAX_PEOPLE),
     genre: state.selectedGenre,
     mood: state.selectedMood,
     lighting: state.selectedLighting,
@@ -118,10 +124,14 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export async function generatePoster(
   req: PosterGenerateRequest,
 ): Promise<PosterGenerateResponse> {
+  let fallbackReason = 'api unavailable';
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), POSTER_API_TIMEOUT_MS);
   try {
     const res = await fetch('/api/generate-poster', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         images: req.images,
         genre: req.genre,
@@ -133,18 +143,30 @@ export async function generatePoster(
       }),
     });
     if (res.ok) {
-      const data = (await res.json()) as PosterGenerateResponse;
+      const data = (await res.json()) as Partial<PosterGenerateResponse>;
       if (data?.imageUrl) {
-        // 텍스트까지 모델이 렌더하므로 그대로 사용(오버레이 없음).
-        return { imageUrl: data.imageUrl };
+        return {
+          imageUrl: data.imageUrl,
+          source: data.source ?? 'openai',
+          inputImages: data.inputImages ?? req.images.length,
+        };
       }
+      fallbackReason = 'api returned no image';
     } else {
-      // 501(키 없음)/502 등 → 폴백.
-      console.warn('[generatePoster] api fallback, status', res.status);
+      const data = await res.json().catch(() => null);
+      fallbackReason = data?.detail || data?.error || `api status ${res.status}`;
+      console.warn('[generatePoster] api failed', res.status, fallbackReason);
     }
   } catch (err) {
-    console.warn('[generatePoster] api unreachable, using placeholder', err);
+    fallbackReason = (err as Error)?.name === 'AbortError'
+      ? 'api timeout'
+      : String((err as Error)?.message ?? err);
+    console.warn('[generatePoster] api unreachable', err);
+  } finally {
+    window.clearTimeout(timeout);
   }
+
+  console.warn('[generatePoster] using local fallback poster', fallbackReason);
   return generatePlaceholderPoster(req);
 }
 
@@ -218,7 +240,11 @@ async function generatePlaceholderPoster(
   // 합성 지연 시뮬레이션(실제 API 대기감)
   await new Promise((r) => setTimeout(r, 1200));
 
-  return { imageUrl: canvas.toDataURL('image/png') };
+  return {
+    imageUrl: canvas.toDataURL('image/png'),
+    source: 'placeholder',
+    inputImages: req.images.length,
+  };
 }
 
 /** 캔버스 텍스트 줄바꿈(최대 2줄). */

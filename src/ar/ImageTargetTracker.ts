@@ -1,10 +1,8 @@
 /**
- * 이미지 타겟 트래커.
+ * 일반 카메라 트래커.
  *
- * Phase 1에서는 8th Wall 이미지 타겟 파일(TODO #10)이 아직 없으므로,
- * 실제 카메라 피드(getUserMedia)는 띄우되 인식 이벤트는 mock으로 발생시킵니다.
- * 8th Wall 연동 시 동일한 onFound/onLost 인터페이스를 유지한 채
- * `xrimagefound` / `xrimagelost` 윈도우 이벤트로 교체하면 됩니다.
+ * Module B 포스터 촬영/전시처럼 8th Wall이 아닌 화면에서 getUserMedia
+ * 카메라 피드를 띄울 때 사용합니다.
  */
 import { cameraManager, type CameraFacing } from './CameraManager';
 
@@ -56,10 +54,7 @@ export class ImageTargetTracker {
     return !!stream && cameraManager.attachTo(this.video);
   }
 
-  /**
-   * 8th Wall 이미지 타겟 이벤트 구독 (연동 시 사용).
-   * 현재는 호출되지 않지만 인터페이스를 미리 확정해 둡니다.
-   */
+  /** 레거시 호환용 이벤트 브리지. 현재 첫 플로우에서는 사용하지 않습니다. */
   attachEighthWall(): void {
     this.usingEighthWall = true;
     window.addEventListener('xrimagefound', this.boundXrFound);
