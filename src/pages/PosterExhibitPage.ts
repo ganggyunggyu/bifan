@@ -8,8 +8,14 @@ import {
 } from '../ar/EighthWallController';
 import { ImageTargetTracker } from '../ar/ImageTargetTracker';
 import { PosterExhibitManager } from '../ar/PosterExhibitManager';
+import { cameraManager } from '../ar/CameraManager';
 import { appState } from '../store/appState';
 import { router, ROUTES } from '../utils/router';
+
+const XR_SCENE_READY_TIMEOUT_MS = 30000;
+const CAMERA_RELEASE_SETTLE_MS = 350;
+const FALLBACK_CAMERA_RETRY_DELAYS_MS = [0, 700, 1400] as const;
+const wait = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 /**
  * [Module B — Screen 11] AR 포스터 전시 (FS-006).
@@ -53,6 +59,7 @@ export class PosterExhibitPage implements Page {
   private hitSampleStartedAt: number | null = null;
   private xrTrackingStatus = 'UNKNOWN';
   private lastWorldDebugMs = 0;
+  private lastXrCameraStatus = 'not-started';
   // 시선(yaw/pitch): target = 입력값, cur = 화면에 적용되는 보간값(떨림 제거).
   private targetYaw = 0;
   private curYaw = 0;
@@ -149,6 +156,10 @@ export class PosterExhibitPage implements Page {
   ): Promise<boolean> {
     this.setArMode('8thwall');
     this.setAnchorState(false, 'xr-starting');
+    this.setXrCameraStatus('releasing-native-camera');
+    cameraManager.release();
+    await wait(CAMERA_RELEASE_SETTLE_MS);
+    if (this.disposed) return false;
 
     const canvas = document.createElement('canvas');
     canvas.className = 'ar-canvas';
@@ -163,22 +174,27 @@ export class PosterExhibitPage implements Page {
     const ok = await this.eighthWall.start({
       canvas,
       worldScale: 'absolute',
-      onSceneReady: (refs) => resolveRefs(refs),
+      onSceneReady: (refs) => {
+        this.setXrCameraStatus('xr-scene-ready');
+        resolveRefs(refs);
+      },
       onUpdate: (args) => {
         this.updateTrackingStatus(args);
         this.tryLockPosterToHit();
       },
       onRender: () => this.updateWorldTrackedDebug(),
       onStatus: (args) => {
+        this.setXrCameraStatus(args.status, args.error);
         if (args.status === 'failed') this.setAnchorState(false, 'xr-camera-failed');
       },
-      onError: () => undefined,
+      onError: (err) => this.setXrCameraStatus('xr-start-error', err),
     });
 
     if (!ok || this.disposed) {
       this.eighthWall.stop();
       canvas.remove();
       this.xrCanvas = null;
+      await this.waitForXrCameraRelease();
       return false;
     }
 
@@ -187,6 +203,8 @@ export class PosterExhibitPage implements Page {
       this.eighthWall.stop();
       canvas.remove();
       this.xrCanvas = null;
+      this.setXrCameraStatus(`xr-scene-timeout:${this.lastXrCameraStatus}`);
+      await this.waitForXrCameraRelease();
       return false;
     }
 
@@ -200,7 +218,7 @@ export class PosterExhibitPage implements Page {
     return Promise.race([
       refsPromise,
       new Promise<null>((resolve) => {
-        window.setTimeout(() => resolve(null), 5000);
+        window.setTimeout(() => resolve(null), XR_SCENE_READY_TIMEOUT_MS);
       }),
     ]);
   }
@@ -222,7 +240,7 @@ export class PosterExhibitPage implements Page {
 
   private async startFallback(view: HTMLElement): Promise<void> {
     this.setArMode('fallback');
-    const { video, hasStream } = await this.tracker.startCamera();
+    const { video, hasStream } = await this.startFallbackCameraWithRetry();
     if (this.disposed) return;
     if (hasStream) {
       video.className = 'ar-video';
@@ -262,6 +280,22 @@ export class PosterExhibitPage implements Page {
     this.setupLook(view);
     window.addEventListener('resize', this.resizeBound);
     this.renderLoop();
+  }
+
+  private async startFallbackCameraWithRetry(): Promise<{
+    video: HTMLVideoElement;
+    hasStream: boolean;
+  }> {
+    let lastResult: { video: HTMLVideoElement; hasStream: boolean } | null = null;
+    for (const delay of FALLBACK_CAMERA_RETRY_DELAYS_MS) {
+      if (delay > 0) await wait(delay);
+      if (this.disposed) break;
+      this.tracker.stop();
+      lastResult = await this.tracker.startCamera();
+      this.setFallbackCameraStatus(lastResult.hasStream ? 'active' : 'unavailable');
+      if (lastResult.hasStream) return lastResult;
+    }
+    return lastResult ?? this.tracker.startCamera();
   }
 
   private tryLockPosterToHit(): void {
@@ -486,6 +520,26 @@ export class PosterExhibitPage implements Page {
       screen.dataset.arMode = mode;
       screen.dataset.posterWorldScale = mode === '8thwall' ? 'absolute' : 'fallback';
     }
+  }
+
+  private setXrCameraStatus(status: string, error?: unknown): void {
+    this.lastXrCameraStatus = status;
+    const screen = this.root?.querySelector<HTMLElement>('.ar-exhibit-page');
+    if (!screen) return;
+    screen.dataset.posterXrCameraStatus = status;
+    if (error) {
+      screen.dataset.posterXrCameraError =
+        error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private setFallbackCameraStatus(status: string): void {
+    const screen = this.root?.querySelector<HTMLElement>('.ar-exhibit-page');
+    if (screen) screen.dataset.posterFallbackCamera = status;
+  }
+
+  private async waitForXrCameraRelease(): Promise<void> {
+    await wait(CAMERA_RELEASE_SETTLE_MS);
   }
 
   private setAnchorState(locked: boolean, mode: string): void {
