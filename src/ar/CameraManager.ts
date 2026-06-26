@@ -99,11 +99,22 @@ class CameraManager {
   attachTo(video: HTMLVideoElement): boolean {
     if (!this.stream) return false;
     video.setAttribute('playsinline', '');
+    video.playsInline = true;
     video.muted = true;
     video.autoplay = true;
     video.srcObject = this.stream;
     void video.play().catch(() => undefined);
     return true;
+  }
+
+  async play(video: HTMLVideoElement): Promise<boolean> {
+    try {
+      await video.play();
+      return true;
+    } catch (err) {
+      console.warn('[CameraManager] video playback failed', err);
+      return false;
+    }
   }
 
   get active(): boolean {

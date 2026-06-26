@@ -249,11 +249,6 @@ export class EighthWallController {
       } catch {
         /* noop */
       }
-      try {
-        XR8.clearCameraPipelineModules?.();
-      } catch {
-        /* noop */
-      }
     }
     this.started = false;
   }

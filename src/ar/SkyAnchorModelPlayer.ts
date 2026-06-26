@@ -28,11 +28,6 @@ import {
   type SkyAnchorPropModel,
 } from '../config/arConfig';
 import { cachedUrl } from '../utils/assetPreloader';
-import {
-  buildSkyAnchorTimeline,
-  getActiveTimelineBatch,
-  type SkyAnchorTimeline,
-} from './skyAnchorTimeline';
 
 interface ModelItem {
   label: string;
@@ -107,6 +102,24 @@ const MODEL_TINT_COLORS = ['#f7fbff', '#7fe5ff', '#ffd95c', '#ff73cf'];
 const ENTRY_STAGGER_SECONDS = SKY_ANCHOR_MODEL_ENTRY_STAGGER_MS / 1000;
 const VISIBLE_SECONDS = SKY_ANCHOR_MODEL_VISIBLE_MS / 1000;
 const FADE_OUT_SECONDS = SKY_ANCHOR_MODEL_FADE_OUT_MS / 1000;
+
+function getDescriptorDelay(descriptor: SkyAnchorPropModel, sequenceIndex: number): number {
+  if (descriptor.delay !== undefined) return descriptor.delay;
+  if (descriptor.persistent) return 0;
+  return sequenceIndex * ENTRY_STAGGER_SECONDS;
+}
+
+function isIntroPngSequence(descriptor: SkyAnchorPropModel, index: number): boolean {
+  return index === 0 && descriptor.kind === 'png-sequence' && !!descriptor.sprite;
+}
+
+function getDescriptorDurationSeconds(descriptor: SkyAnchorPropModel): number {
+  if (descriptor.persistent) return Number.POSITIVE_INFINITY;
+  if (descriptor.kind === 'png-sequence' && descriptor.sprite) {
+    return Math.max(descriptor.sprite.frameCount / Math.max(descriptor.sprite.fps, 1), 0.1);
+  }
+  return VISIBLE_SECONDS;
+}
 
 function getDescriptorLabel(descriptor: SkyAnchorPropModel): string {
   if (descriptor.label) return descriptor.label;
@@ -445,7 +458,6 @@ export class SkyAnchorModelPlayer {
   private activeBatch = -1;
   private anchorLocked = false;
   private anchorMode = 'unlocked';
-  private timeline: SkyAnchorTimeline | null = null;
 
   constructor() {
     this.root.name = 'bifan-world-locked-anchor';
@@ -460,11 +472,33 @@ export class SkyAnchorModelPlayer {
     let loaded = 0;
     let failed = 0;
     const total = SKY_ANCHOR_PROP_MODELS.length;
+    const sequenceIndexes: number[] = SKY_ANCHOR_PROP_MODELS.map(() => -1);
+    const sequenceDelays: number[] = SKY_ANCHOR_PROP_MODELS.map(() => 0);
+    const sequenceDurations: number[] = SKY_ANCHOR_PROP_MODELS.map(getDescriptorDurationSeconds);
     const loadedItems: Array<ModelItem | null> = Array.from({ length: total }, () => null);
+    let nextSequenceIndex = 0;
     let nextLoadIndex = 0;
-    const timeline = buildSkyAnchorTimeline(SKY_ANCHOR_PROP_MODELS, {
-      entryStaggerSeconds: ENTRY_STAGGER_SECONDS,
-      visibleSeconds: VISIBLE_SECONDS,
+    const introEndSeconds = SKY_ANCHOR_PROP_MODELS.reduce((end, descriptor, index) => {
+      if (!isIntroPngSequence(descriptor, index)) return end;
+      const delay = descriptor.delay ?? 0;
+      return Math.max(end, delay + getDescriptorDurationSeconds(descriptor));
+    }, 0);
+
+    SKY_ANCHOR_PROP_MODELS.forEach((descriptor, index) => {
+      const duration = sequenceDurations[index];
+      if (descriptor.persistent) {
+        sequenceDelays[index] = descriptor.delay ?? 0;
+        return;
+      }
+      if (isIntroPngSequence(descriptor, index)) {
+        sequenceDelays[index] = descriptor.delay ?? 0;
+        return;
+      }
+      sequenceIndexes[index] = nextSequenceIndex;
+      sequenceDelays[index] =
+        descriptor.delay ?? getDescriptorDelay(descriptor, nextSequenceIndex) + introEndSeconds;
+      sequenceDurations[index] = duration;
+      nextSequenceIndex += 1;
     });
     onProgress?.({ loaded, failed, total });
 
@@ -475,10 +509,9 @@ export class SkyAnchorModelPlayer {
         if (index >= SKY_ANCHOR_PROP_MODELS.length) return;
 
         const descriptor = SKY_ANCHOR_PROP_MODELS[index];
-        const itemTimeline = timeline.items[index];
-        const itemSequenceIndex = itemTimeline.sequenceIndex;
-        const itemDelay = itemTimeline.delay;
-        const itemDuration = itemTimeline.duration;
+        const itemSequenceIndex = sequenceIndexes[index];
+        const itemDelay = sequenceDelays[index];
+        const itemDuration = sequenceDurations[index];
         try {
           let item: ModelItem;
           if (descriptor.kind === 'sprite' || descriptor.kind === 'png-sequence') {
@@ -513,7 +546,6 @@ export class SkyAnchorModelPlayer {
 
     this.items = loadedItems.filter((item): item is ModelItem => item !== null);
     this.items.forEach((item) => this.root.add(item.wrapper));
-    this.timeline = timeline;
 
     if (!this.items.length) {
       throw new Error('sky-anchor model load failed');
@@ -590,9 +622,18 @@ export class SkyAnchorModelPlayer {
     }
 
     const revealElapsed = elapsedSeconds - this.revealStartedAt;
-    this.activeBatch = this.timeline
-      ? getActiveTimelineBatch(this.timeline, revealElapsed, ENTRY_STAGGER_SECONDS)
-      : -1;
+    const propSequenceItems = this.items.filter((item) => !item.persistent && item.sequenceIndex >= 0);
+    const firstPropDelay = propSequenceItems.reduce(
+      (min, item) => Math.min(min, item.delay),
+      Number.POSITIVE_INFINITY,
+    );
+    this.activeBatch =
+      propSequenceItems.length > 0 && revealElapsed >= firstPropDelay
+        ? Math.min(
+            Math.floor((revealElapsed - firstPropDelay) / ENTRY_STAGGER_SECONDS),
+            propSequenceItems.length - 1,
+          )
+        : -1;
 
     this.items.forEach((item) => {
       const localElapsed = revealElapsed - item.delay;
@@ -700,7 +741,6 @@ export class SkyAnchorModelPlayer {
     this.activeBatch = -1;
     this.anchorLocked = false;
     this.anchorMode = 'unlocked';
-    this.timeline = null;
   }
 
   private registerAnimations(item: ModelItem, gltf: GLTF, descriptor: SkyAnchorPropModel): void {
