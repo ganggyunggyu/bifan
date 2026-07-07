@@ -15,6 +15,7 @@ import { router, ROUTES } from '../utils/router';
 const XR_SCENE_READY_TIMEOUT_MS = 30000;
 const CAMERA_RELEASE_SETTLE_MS = 350;
 const FALLBACK_CAMERA_RETRY_DELAYS_MS = [0, 700, 1400] as const;
+const XR_FRONT_PLACEMENT_FALLBACK_MS = 3000;
 const wait = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 /**
@@ -211,6 +212,7 @@ export class PosterExhibitPage implements Page {
     this.initWorldTrackedScene(refs);
     hint.textContent = '벽면을 비추면 포스터가 그 위치에 고정됩니다';
     this.setAnchorState(false, 'hittest-waiting');
+    this.scheduleAnchorFallback('xr-front-timeout');
     return true;
   }
 
@@ -245,6 +247,12 @@ export class PosterExhibitPage implements Page {
     if (hasStream) {
       video.className = 'ar-video';
       view.appendChild(video);
+      const isPlaying = await cameraManager.play(video);
+      if (!isPlaying) {
+        video.remove();
+        view.classList.add('ar-view--placeholder');
+        this.setFallbackCameraStatus('play-failed');
+      }
     } else {
       view.classList.add('ar-view--placeholder');
     }
@@ -378,6 +386,7 @@ export class PosterExhibitPage implements Page {
       this.hintEl.textContent = '화면 중앙을 벽면에 맞추면 다시 배치됩니다';
     }
     this.setAnchorState(false, 'xr-repositioning');
+    this.scheduleAnchorFallback('xr-reposition-front-timeout');
   }
 
   private facePosterToCamera(group: THREE.Group, camera: THREE.Camera): THREE.Vector3 {
@@ -677,6 +686,15 @@ export class PosterExhibitPage implements Page {
     if (this.anchorFallbackTimer === null) return;
     window.clearTimeout(this.anchorFallbackTimer);
     this.anchorFallbackTimer = null;
+  }
+
+  private scheduleAnchorFallback(mode: string): void {
+    this.clearAnchorFallbackTimer();
+    this.anchorFallbackTimer = window.setTimeout(() => {
+      this.anchorFallbackTimer = null;
+      if (this.disposed || this.anchorLocked || !this.group) return;
+      this.lockPosterInFrontOfCamera(mode);
+    }, XR_FRONT_PLACEMENT_FALLBACK_MS);
   }
 
   /**

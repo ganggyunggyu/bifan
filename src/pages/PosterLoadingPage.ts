@@ -7,7 +7,7 @@ import { router, ROUTES } from '../utils/router';
 
 /**
  * [Module B — Screen 9] 포스터 생성 로딩.
- * AI 생성 API(현재 placeholder) 호출 → 성공 시 완료 화면, 실패 시 재시도.
+ * AI 생성 API 호출 → 성공 시 완료 화면, 실패 시 재시도.
  */
 export class PosterLoadingPage implements Page {
   private cancelled = false;

@@ -246,7 +246,7 @@ body {
   color: #1b1b1b;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 1s ease, transform 1s ease;
+  transition: opacity 0.45s ease, transform 0.45s ease;
 }
 .message-paragraph.is-visible {
   opacity: 1;

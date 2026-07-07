@@ -3,8 +3,8 @@
  * Centralised here so they can be swapped without touching screen logic.
  */
 
-// Vercel HEAD 응답에서 일부 GLB Content-Length가 빠질 수 있어 실제 preload 총량을 fallback으로 보정.
-export const DOWNLOAD_SIZE_MB = 77;
+// Vercel HEAD 응답에서 GLB Content-Length가 빠질 수 있어 로컬 실측 preload 총량으로 보정.
+export const DOWNLOAD_SIZE_MB = 37;
 
 // Loading screen timing (Screen 1).
 export const LOGO_FADE_MS = 800;

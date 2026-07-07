@@ -3,10 +3,9 @@
  *
  * `generatePoster`가 서버리스 함수 `/api/generate-poster`(gpt-image-2 edits)를
  * 호출합니다. 텍스트(제목·부제·로렐)는 이미지 모델이 직접 렌더하므로 클라이언트
- * 오버레이는 없습니다. 네트워크/생성 실패 시에는 사진+제목을 합성한 placeholder
- * 포스터(`generatePlaceholderPoster`)로 폴백합니다.
+ * 오버레이는 없습니다. 네트워크/생성 실패 시에는 원본 사진으로 넘기지 않고
+ * 호출자가 에러 UI를 보여주도록 실패를 그대로 throw합니다.
  */
-import { COLORS } from '../config/appConfig';
 import { MAX_PEOPLE } from '../config/posterOptions';
 import type { AppState } from '../store/appState';
 
@@ -28,7 +27,7 @@ export interface PosterGenerateRequest {
 
 export interface PosterGenerateResponse {
   imageUrl: string;
-  source: 'openai' | 'placeholder';
+  source: 'openai';
   inputImages: number;
   model?: string;
 }
@@ -107,24 +106,14 @@ export function compressImage(
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
 /**
  * 포스터 생성.
  * 1) 서버리스 함수(/api/generate-poster)로 OpenAI 이미지 생성 시도(텍스트 포함).
- * 2) 키 미설정/실패 시 로컬 canvas 합성 placeholder로 폴백.
+ * 2) 실패 시 fallback 없이 throw해서 원본 사진이 전시/저장되지 않게 한다.
  */
 export async function generatePoster(
   req: PosterGenerateRequest,
 ): Promise<PosterGenerateResponse> {
-  let fallbackReason = 'api unavailable';
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), POSTER_API_TIMEOUT_MS);
   try {
@@ -142,133 +131,30 @@ export async function generatePoster(
         subtitle: req.subtitle,
       }),
     });
-    if (res.ok) {
-      const data = (await res.json()) as Partial<PosterGenerateResponse>;
-      if (data?.imageUrl) {
-        return {
-          imageUrl: data.imageUrl,
-          source: data.source ?? 'openai',
-          inputImages: data.inputImages ?? req.images.length,
-        };
-      }
-      fallbackReason = 'api returned no image';
-    } else {
-      const data = await res.json().catch(() => null);
-      fallbackReason = data?.detail || data?.error || `api status ${res.status}`;
-      console.warn('[generatePoster] api failed', res.status, fallbackReason);
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail = data?.detail ?? data?.error ?? `api status ${res.status}`;
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
     }
+
+    if (!data?.imageUrl) {
+      throw new Error('api returned no image');
+    }
+
+    return {
+      imageUrl: data.imageUrl,
+      source: 'openai',
+      inputImages: data.inputImages ?? req.images.length,
+      model: data.model,
+    };
   } catch (err) {
-    fallbackReason = (err as Error)?.name === 'AbortError'
+    const reason = (err as Error)?.name === 'AbortError'
       ? 'api timeout'
       : String((err as Error)?.message ?? err);
-    console.warn('[generatePoster] api unreachable', err);
+    console.warn('[generatePoster] api failed', reason);
+    throw new Error(reason);
   } finally {
     window.clearTimeout(timeout);
   }
-
-  console.warn('[generatePoster] using local fallback poster', fallbackReason);
-  return generatePlaceholderPoster(req);
-}
-
-/** 로컬 합성 placeholder(실제 API 실패 시 폴백). */
-async function generatePlaceholderPoster(
-  req: PosterGenerateRequest,
-): Promise<PosterGenerateResponse> {
-  // placeholder 합성: 첫 인물 사진을 2:3 포스터에 담고 제목/장르/로렐 타이포 오버레이.
-  const W = 720;
-  const H = 1080;
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('canvas 2d context unavailable');
-
-  // 배경
-  ctx.fillStyle = '#0c0e14';
-  ctx.fillRect(0, 0, W, H);
-
-  // 인물 사진 cover 배치 (상단 70%)
-  try {
-    const first = req.images[0];
-    if (first) {
-      const img = await loadImage(first);
-      const areaH = H * 0.72;
-      const scale = Math.max(W / img.width, areaH / img.height);
-      const dw = img.width * scale;
-      const dh = img.height * scale;
-      ctx.drawImage(img, (W - dw) / 2, 0, dw, dh);
-
-      // 하단 그라데이션으로 타이포 영역 확보
-      const grad = ctx.createLinearGradient(0, areaH - 200, 0, H);
-      grad.addColorStop(0, 'rgba(12,14,20,0)');
-      grad.addColorStop(0.55, 'rgba(12,14,20,0.85)');
-      grad.addColorStop(1, 'rgba(12,14,20,1)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, areaH - 200, W, H - (areaH - 200));
-    }
-  } catch {
-    // 이미지 로드 실패 시 단색 유지.
-  }
-
-  // 장르 라벨
-  ctx.textAlign = 'center';
-  ctx.fillStyle = COLORS.bifanBlue;
-  ctx.font = '700 30px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
-  if (req.genre) ctx.fillText(req.genre, W / 2, H - 250);
-
-  // 영화 제목
-  const title = (req.title || '무제').trim();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '800 68px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
-  wrapText(ctx, title, W / 2, H - 170, W - 80, 74);
-
-  const subtitle = (req.subtitle || '').trim();
-  if (subtitle) {
-    ctx.fillStyle = 'rgba(255,255,255,0.82)';
-    ctx.font = '700 24px -apple-system, "Noto Sans KR", sans-serif';
-    ctx.fillText(subtitle, W / 2, H - 110);
-  }
-
-  // 푸터 로렐
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = '600 22px -apple-system, "Noto Sans KR", sans-serif';
-  ctx.fillText('제30회 부천국제판타스틱영화제', W / 2, H - 76);
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.font = '500 20px -apple-system, "Noto Sans KR", sans-serif';
-  ctx.fillText('2026 여름 대개봉', W / 2, H - 42);
-
-  // 합성 지연 시뮬레이션(실제 API 대기감)
-  await new Promise((r) => setTimeout(r, 1200));
-
-  return {
-    imageUrl: canvas.toDataURL('image/png'),
-    source: 'placeholder',
-    inputImages: req.images.length,
-  };
-}
-
-/** 캔버스 텍스트 줄바꿈(최대 2줄). */
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-): void {
-  const chars = [...text];
-  const lines: string[] = [];
-  let line = '';
-  for (const ch of chars) {
-    if (ctx.measureText(line + ch).width > maxWidth && line) {
-      lines.push(line);
-      line = ch;
-    } else {
-      line += ch;
-    }
-  }
-  if (line) lines.push(line);
-  const shown = lines.slice(0, 2);
-  const startY = y - (shown.length - 1) * lineHeight;
-  shown.forEach((l, i) => ctx.fillText(l, x, startY + i * lineHeight));
 }

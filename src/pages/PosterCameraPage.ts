@@ -188,6 +188,16 @@ export class PosterCameraPage implements Page {
       video.className = 'ar-video';
       this.applyMirror();
       view.appendChild(video);
+      const isPlaying = await cameraManager.play(video);
+      if (!isPlaying) {
+        this.hasStream = false;
+        video.remove();
+        this.showCameraPermissionUi({
+          body: '권한은 허용됐지만 카메라 화면을 재생하지 못했습니다. 다시 시도해 주세요.',
+          primaryLabel: '다시 시도',
+          title: '카메라 재생 실패',
+        });
+      }
       return;
     }
 

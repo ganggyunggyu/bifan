@@ -25,15 +25,13 @@ const IMAGE_MODEL = process.env.POSTER_IMAGE_MODEL ?? 'gpt-image-2';
 const FUNCTION_BUDGET_MS = 54000;
 const OUTPUT_FORMAT = 'jpeg';
 const OUTPUT_MIME = 'image/jpeg';
-const OUTPUT_COMPRESSION = '82';
+const OUTPUT_COMPRESSION = 82;
 const IMAGE_SIZE = '1024x1536';
 
 function supportsInputFidelity(model: string): boolean {
   return (
     !model.includes('mini') &&
-    (model.startsWith('gpt-image-1') ||
-      model.startsWith('gpt-image-2') ||
-      model === 'chatgpt-image-latest')
+    (model.startsWith('gpt-image-1') || model === 'chatgpt-image-latest')
   );
 }
 
@@ -158,7 +156,7 @@ async function generateImage(
       body.append('quality', 'low');
       body.append('n', '1');
       body.append('output_format', OUTPUT_FORMAT);
-      body.append('output_compression', OUTPUT_COMPRESSION);
+      body.append('output_compression', String(OUTPUT_COMPRESSION));
       if (supportsInputFidelity(IMAGE_MODEL)) {
         body.append('input_fidelity', 'low');
       }

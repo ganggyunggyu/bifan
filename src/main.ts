@@ -40,7 +40,7 @@ router
     () =>
       new LoadingTransitionPage({
         label: '로딩 중...',
-        durationMs: 3000,
+        durationMs: 1000,
         next: ROUTES.poster,
       }),
   );

@@ -28,7 +28,7 @@ export interface AppState {
   movieTitle: string;
   movieSubtitle: string;
   generatedPosterUrl: string | null;
-  generatedPosterSource: 'openai' | 'placeholder' | null;
+  generatedPosterSource: 'openai' | null;
   generatedPosterInputCount: number;
 
   // 전시 (Phase 3)

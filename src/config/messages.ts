@@ -10,7 +10,7 @@ export const ANNIVERSARY_MESSAGES: string[] = [
 ];
 
 // 단락 간 등장 간격 (ms).
-export const MESSAGE_INTERVAL_MS = 3500;
+export const MESSAGE_INTERVAL_MS = 1600;
 
 // 마지막 단락 등장 후 다음 화면으로 넘어가기까지 대기 (ms).
-export const MESSAGE_OUTRO_MS = 3000;
+export const MESSAGE_OUTRO_MS = 1000;
